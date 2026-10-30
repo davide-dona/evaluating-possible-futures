@@ -1,63 +1,81 @@
 from collections.abc import Callable
+from dataclasses import dataclass
 
 import numpy as np
 from rapidfuzz.distance import DamerauLevenshtein
 
-from improper_suffix_metrics.markov_process import MarkovProcess, Trace
+from improper_suffix_metrics.markov_process import Trace
 
-# Draws `draw_count` suffixes for a prefix.
-Forecaster = Callable[[Trace, int, np.random.Generator], list[Trace]]
-
-METRICS = ('dls', 'length_mae', 'remaining_time_mae')
+# Predicts the suffix of a prefix as one or more drawn suffixes.
+Forecaster = Callable[[Trace], list[Trace]]
 
 
-def oracle(process: MarkovProcess) -> Forecaster:
-    """Return a forecaster that samples from the true suffix distribution."""
+def dls(predicted: Trace, observed: Trace) -> float:
+    """Return the normalized Damerau-Levenshtein similarity of the activity sequences.
 
-    def forecast(prefix: Trace, draw_count: int, rng: np.random.Generator) -> list[Trace]:
-        return [process.sample_suffix(prefix.activities[-1], rng) for _ in range(draw_count)]
-
-    return forecast
-
-
-def mode_model(process: MarkovProcess) -> Forecaster:
-    """Return a forecaster that always predicts the most probable suffix."""
-
-    def forecast(prefix: Trace, draw_count: int, rng: np.random.Generator) -> list[Trace]:
-        return [process.mode_suffix(prefix.activities[-1])] * draw_count
-
-    return forecast
+    It is 1 when the sequences are equal and 0 when they share nothing, so higher is better.
+    """
+    return DamerauLevenshtein.normalized_similarity(predicted.activities, observed.activities)
 
 
-def score(draws: list[Trace], observed: Trace) -> tuple[float, float, float]:
-    """Return the mean DLS, suffix length error, and remaining time error of the draws."""
-    similarity = DamerauLevenshtein.normalized_similarity
-    remaining_time = sum(observed.times)
-    return (
-        np.mean([similarity(d.activities, observed.activities) for d in draws]),
-        np.mean([abs(len(d) - len(observed)) for d in draws]),
-        np.mean([abs(sum(d.times) - remaining_time) for d in draws]),
-    )
+def length_error(predicted: Trace, observed: Trace) -> float:
+    """Return the absolute difference between the numbers of activities of the suffixes."""
+    return abs(len(predicted) - len(observed))
 
 
-def evaluate(
-    forecaster: Forecaster, cases: list[Trace], draw_count: int, rng: np.random.Generator
-) -> dict[str, float]:
-    """Return each metric averaged over every prefix of every case that leaves a suffix."""
-    scores = [
-        score(forecaster(case[:cut], draw_count, rng), case[cut:])
+def remaining_time_error(predicted: Trace, observed: Trace) -> float:
+    """Return the absolute difference in days between the durations of the suffixes."""
+    return abs(predicted.duration - observed.duration)
+
+
+@dataclass(frozen=True, kw_only=True)
+class Prediction:
+    """The suffixes a forecaster drew for a prefix of a test case, next to the observed suffix."""
+
+    prefix: Trace
+    draws: list[Trace]
+    observed: Trace
+
+
+def predict(forecaster: Forecaster, cases: list[Trace]) -> list[Prediction]:
+    """Run a forecaster on every prefix of every test case.
+
+    Each case of length `n` gives the prefixes of length 1 to `n - 1`, so that every prefix leaves
+    a non-empty suffix. The forecaster predicts each prefix once.
+
+    Args:
+        forecaster: The model to run.
+        cases: The test cases.
+
+    Returns:
+        The predictions, case by case and by increasing prefix length within a case.
+    """
+    return [
+        Prediction(prefix=case[:cut], draws=forecaster(case[:cut]), observed=case[cut:])
         for case in cases
         for cut in range(1, len(case))
     ]
-    return dict(zip(METRICS, np.mean(scores, axis=0).tolist(), strict=True))
 
 
-def compare(
-    process: MarkovProcess, case_count: int, draw_count: int, rng: np.random.Generator
-) -> dict[str, dict[str, float]]:
-    """Simulate test cases from the process and evaluate the oracle and the mode model on them."""
-    cases = [process.sample(rng) for _ in range(case_count)]
+def evaluate(predictions: list[Prediction]) -> dict[str, float]:
+    """Score predictions with the averaged point metrics.
+
+    Each point metric compares every drawn suffix with the observed one, is averaged over the draws
+    of each prediction, and then over all predictions.
+
+    Args:
+        predictions: The predictions to score.
+
+    Returns:
+        The mean DLS (higher is better), and the mean absolute errors of the suffix length and of
+        the remaining time in days (lower is better), by name.
+    """
+
+    def average(metric: Callable[[Trace, Trace], float]) -> float:
+        return np.mean([np.mean([metric(d, p.observed) for d in p.draws]) for p in predictions])
+
     return {
-        'oracle': evaluate(oracle(process), cases, draw_count, rng),
-        'mode': evaluate(mode_model(process), cases, draw_count, rng),
+        'DLS': average(dls),
+        'Length MAE': average(length_error),
+        'Remaining Time MAE': average(remaining_time_error),
     }

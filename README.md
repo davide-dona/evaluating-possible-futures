@@ -7,12 +7,14 @@ always predicts the most probable suffix scores at least as well as an oracle th
 true distribution.
 
 - `src/improper_suffix_metrics/markov_process.py`: a Markov process over activities with lognormal
-  times, its sampler, and its most probable suffix.
-- `src/improper_suffix_metrics/model.py`: process graphs, such as the loan application one, and the
-  random Markov processes drawn on them.
-- `src/improper_suffix_metrics/evaluation.py`: the oracle, the mode model, and the averaged metrics
-  (mean DLS, suffix length MAE, remaining time MAE) over every prefix of every test case.
-- `experiment.ipynb`: the experiment on one setting and on random settings.
+  times, its sampler, its most probable suffix, and random probabilities and times on its
+  structure.
+- `src/improper_suffix_metrics/evaluation.py`: the predictions of any forecaster on every prefix of
+  every test case, and their averaged metrics (mean DLS, suffix length MAE, remaining time MAE).
+- `figures/loan_process.drawio`: the BPMN diagram of the loan application process, exported to
+  `figures/loan_process.svg` for the notebook.
+- `experiment.ipynb`: the oracle, the mode model, and their comparison on one setting and on random
+  settings.
 
 ## Usage
 
@@ -21,5 +23,5 @@ uv sync
 uv run jupyter nbconvert --to notebook --execute --inplace experiment.ipynb
 ```
 
-To study another process, add its graph to `model.py` and pass it to `random_markov_process`, or
-build a `MarkovProcess` with fixed probabilities and times, and pass the process to `compare`.
+To study another process, build a `MarkovProcess` like the loan one in the notebook and pass it, or
+`randomize` of it, to the notebook's `compare`.
