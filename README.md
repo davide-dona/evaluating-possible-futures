@@ -1,17 +1,25 @@
-# Improper Suffix Metrics
+# Evaluating Possible Futures
 
-This repository tests whether mean Damerau-Levenshtein similarity (DLS), the metric commonly
-used to score probabilistic suffix prediction, rewards a model for collapsing its predictive
-distribution. It trains one U-ED-LSTM per event log and decodes every test prefix two ways from
-the same checkpoint:
+This repository holds the experiments of the paper *Evaluating Possible Futures: Rethinking the
+Assessment of Probabilistic Suffix Prediction*. A probabilistic suffix predictor forecasts how a
+running case will continue as a set of sampled suffixes, since the same prefix can lead to
+several plausible continuations. The paper scores such forecasts with three energy scores, each
+built on a distance between suffixes. An energy score is a proper scoring rule: it rewards a
+forecast for both the accuracy and the spread of its suffixes, so it cannot be improved by
+collapsing on a single continuation. The usual metric, mean Damerau-Levenshtein similarity (DLS)
+over the sampled suffixes, accounts for accuracy only.
+
+To show that the choice of metric changes which method ranks first, the repository trains one
+U-ED-LSTM per event log and decodes every test prefix two ways from the same checkpoint:
 
 - **Sampled:** 100 suffixes per prefix, drawn with dropout and Gaussian logits active, as the
   U-ED-LSTM is meant to be used.
 - **Greedy:** one suffix per prefix, with dropout off and the class of the highest logit mean
   taken at every step.
 
-Both decodings are scored with mean DLS and with three fair energy scores. If DLS prefers greedy
-decoding while the energy scores prefer sampling, then DLS rewards the collapsed forecast.
+Both decodings are scored with mean DLS and with the three energy scores. Mean DLS can prefer the
+greedy decoding even where the energy scores prefer sampling, because averaging similarity
+rewards a forecast that suppresses alternative futures.
 
 The four logs are Sepsis, BPIC12, BPIC17, and BPIC19, under `data/<dataset>/original.csv`.
 

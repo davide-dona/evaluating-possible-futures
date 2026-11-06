@@ -1,5 +1,5 @@
 [project]
-name = "improper-suffix-metrics"
+name = "evaluating-possible-futures"
 version = "0.1.0"
 description = "Empirical evidence that averaged point metrics reward mode collapse in suffix prediction"
 requires-python = ">=3.13"
