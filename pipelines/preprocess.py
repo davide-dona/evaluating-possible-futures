@@ -21,11 +21,6 @@ from src.logs.preprocessing import (
 def run(data: DictConfig) -> None:
     """Filter, sort, and split a raw log, and fit the vocabulary on its train split.
 
-    Drops the cases longer than the length percentile or running longer than the duration
-    percentile, both read off the log as read, then the cases starting less than that duration
-    before the end of what is left. So every kept case had longer than any kept duration to
-    finish before the log ends.
-
     Args:
         data: The `data` section.
     """
@@ -43,15 +38,18 @@ def run(data: DictConfig) -> None:
         log = read_original_log(original_log(data.name), data)
         print(f'  {len(log):,} events over {log[CASE_KEY].nunique():,} cases', flush=True)
 
+    # Compute the values for dropping outlier cases
     max_duration_days = float(np.percentile(case_durations(log), data.max_case_duration_percentile))
     max_length = int(np.ceil(np.percentile(case_lengths(log), data.max_case_length_percentile)))
     with step(
         f'Dropping the cases longer than {max_length} events or running longer than '
         f'{max_duration_days:,.1f} days'
     ):
+        # Drop the outlier cases and report how many were dropped
         kept = drop_outlier_cases(log, max_duration_days=max_duration_days, max_length=max_length)
         _report_dropped(before=log, after=kept)
         log = kept
+    # Drop the cases starting too close to the end of the log.
     with step(f'Dropping the cases starting within {max_duration_days:,.1f} days of the log end'):
         kept = drop_cases_starting_late(log, min_observed_days=max_duration_days)
         _report_dropped(before=log, after=kept)
@@ -64,12 +62,15 @@ def run(data: DictConfig) -> None:
             test_frac=data.test_split,
             seed=data.split_seed,
         )
+
     with step('Writing the splits and the vocabulary'):
         for split, rows in ((Split.TRAIN, train), (Split.VAL, val), (Split.TEST, test)):
             write_split(rows, split_file(data.name, split))
+        # Write vocabulary fitted on the train split, which is used for encoding the splits for training
         vocabulary = Vocabulary.fit(train, max_case_length=max_length)
         vocabulary.save(vocabulary_file(data.name))
 
+    # Report the statistics of the splits.
     summary = pd.DataFrame(
         {name: _describe(rows) for name, rows in (('train', train), ('val', val), ('test', test))}
     ).T
@@ -99,6 +100,7 @@ def _describe(split: pd.DataFrame) -> dict[str, str]:
 
 
 def _report_dropped(*, before: pd.DataFrame, after: pd.DataFrame) -> None:
+    """Report how many cases were dropped between two logs."""
     read = before[CASE_KEY].nunique()
     dropped = read - after[CASE_KEY].nunique()
     print(f'  dropped {dropped:,} of {read:,} cases ({dropped / read:.2%})', flush=True)

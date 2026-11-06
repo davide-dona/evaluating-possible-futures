@@ -5,14 +5,15 @@ from omegaconf import DictConfig
 from pipelines.helpers.console import banner, step
 from pipelines.helpers.paths import original_log
 from src.logs.keys import CASE_KEY
-from src.simulation.processes import SyntheticProcess, simulate_log
+from src.simulation.processes import SyntheticProcess
 
 
 def run(data: DictConfig) -> None:
-    """Draw the synthetic log and write it where preprocessing reads an original log.
+    """Generate the synthetic log according to the specified process and
+    write it to a CSV file.
 
     Args:
-        data: The `data` section of the synthetic dataset.
+        data: The configuration for the synthetic log generation.
     """
     process = SyntheticProcess(**data.process)
     path = original_log(data.name)
@@ -26,10 +27,12 @@ def run(data: DictConfig) -> None:
             'original log': path,
         },
     )
+    # Generate the synthetic log
     with step('Drawing the cases'):
         rng = np.random.default_rng(data.simulation_seed)
-        log = simulate_log(process, num_cases=data.num_cases, rng=rng)
+        log = process.simulate_log(num_cases=data.num_cases, rng=rng)
         print(f'  {len(log):,} events over {log[CASE_KEY].nunique():,} cases', flush=True)
+    # Write the synthetic log to a CSV file
     with step(f'Writing the log to {path}'):
         path.parent.mkdir(parents=True, exist_ok=True)
         log.to_csv(path, sep=data.separator, index=False)

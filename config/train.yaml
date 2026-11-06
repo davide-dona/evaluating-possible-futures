@@ -14,8 +14,6 @@ training:
   window: 5
   weight_penalty: 1.0e-4
   grad_clip_norm: 1.0
-  # Batches per chunk sorted by prefix length.
-  bucket_batches: 50
   teacher_forcing:
     start: 0.8
     decay: 0.96

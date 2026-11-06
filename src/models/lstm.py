@@ -19,31 +19,6 @@ class GateMasks(NamedTuple):
         return GateMasks(inputs=self.inputs[index], hidden=self.hidden[index])
 
 
-def _lstm_step(
-    projected_inputs: torch.Tensor,
-    hidden: torch.Tensor,
-    cell: torch.Tensor,
-    hidden_weights: torch.Tensor,
-    bias: torch.Tensor,
-) -> LSTMState:
-    """One LSTM step from an already projected input and a gate-wise masked hidden state.
-
-    Args:
-        projected_inputs: `[B, 4, H]`, the input's contribution to each gate.
-        hidden: `[B, 4, H]`, the previous hidden state as each gate reads it.
-        cell: `[B, H]`, the previous cell state.
-        hidden_weights: `[4, H, H]`.
-        bias: `[4, H]`.
-
-    Returns:
-        The next hidden and cell states.
-    """
-    gates = projected_inputs + torch.einsum('bgk,ghk->bgh', hidden, hidden_weights) + bias
-    input_gate, forget_gate, candidate, output_gate = gates.unbind(dim=1)  # 4 x [B, H]
-    cell = forget_gate.sigmoid() * cell + input_gate.sigmoid() * candidate.tanh()
-    return output_gate.sigmoid() * cell.tanh(), cell
-
-
 class GateDropoutLSTMCell(nn.Module):
     """LSTM layer with variational dropout on each gate's input and hidden state.
 
@@ -71,6 +46,26 @@ class GateDropoutLSTMCell(nn.Module):
             return keep.float() / (1.0 - p)
 
         return GateMasks(inputs=draw(input_size), hidden=draw(hidden_size))
+
+    def _step(
+        self, projected_inputs: torch.Tensor, hidden: torch.Tensor, cell: torch.Tensor
+    ) -> LSTMState:
+        """One LSTM step from an already projected input and a gate-wise masked hidden state.
+
+        Args:
+            projected_inputs: `[B, 4, H]`, the input's contribution to each gate.
+            hidden: `[B, 4, H]`, the previous hidden state as each gate reads it.
+            cell: `[B, H]`, the previous cell state.
+
+        Returns:
+            The next hidden and cell states.
+        """
+        gates = (
+            projected_inputs + torch.einsum('bgk,ghk->bgh', hidden, self.hidden_weights) + self.bias
+        )
+        input_gate, forget_gate, candidate, output_gate = gates.unbind(dim=1)  # 4 x [B, H]
+        cell = forget_gate.sigmoid() * cell + input_gate.sigmoid() * candidate.tanh()
+        return output_gate.sigmoid() * cell.tanh(), cell
 
     def forward(
         self,
@@ -102,12 +97,8 @@ class GateDropoutLSTMCell(nn.Module):
             gate_hidden = hidden.unsqueeze(dim=1).expand(-1, 4, -1)  # [B, H] -> [B, 4, H]
             if masks is not None:
                 gate_hidden = gate_hidden * masks.hidden
-            next_hidden, next_cell = _lstm_step(
-                projected_inputs=projected[:, position],
-                hidden=gate_hidden,
-                cell=cell,
-                hidden_weights=self.hidden_weights,
-                bias=self.bias,
+            next_hidden, next_cell = self._step(
+                projected_inputs=projected[:, position], hidden=gate_hidden, cell=cell
             )
             if keep is not None:
                 advance = keep[:, position].unsqueeze(dim=1)  # [B, 1]

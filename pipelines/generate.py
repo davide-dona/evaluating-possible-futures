@@ -4,7 +4,6 @@ from omegaconf import DictConfig
 
 from pipelines.helpers.console import banner, step
 from pipelines.helpers.paths import split_file, stage_dir, vocabulary_file
-from pipelines.helpers.runtime import deterministic
 from src.datasets.dataset import EncodedLog
 from src.datasets.vocabulary import Vocabulary
 from src.inference.generate import generate
@@ -15,7 +14,7 @@ from src.models.u_ed_lstm import UEDLSTM
 
 def run(config: DictConfig) -> None:
     """Draw sampled and greedy suffixes for every scored test prefix from the trained model."""
-    deterministic(config.seed)
+    torch.manual_seed(config.seed)
     device = torch.device(config.device)
     name = config.data.name
     checkpoint = stage_dir(name, 'train') / 'model.pt'

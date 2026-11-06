@@ -2,12 +2,12 @@ import csv
 from dataclasses import asdict, fields
 
 import hydra
+import numpy as np
 import torch
 from omegaconf import DictConfig
 
 from pipelines.helpers.console import banner, duration, step
 from pipelines.helpers.paths import split_file, stage_dir, vocabulary_file
-from pipelines.helpers.runtime import deterministic
 from src.datasets.dataset import EncodedLog
 from src.datasets.vocabulary import Vocabulary
 from src.logs.io import read_split
@@ -18,7 +18,11 @@ from src.training.train import EpochRecord, train
 
 def run(config: DictConfig) -> None:
     """Train the U-ED-LSTM on a preprocessed dataset and write its final weights."""
-    rng = deterministic(config.seed)
+    # Set the random seeds for reproducibility
+    torch.manual_seed(config.seed)
+    rng = np.random.default_rng(config.seed)
+
+    # Set the device and directories
     device = torch.device(config.device)
     name, training = config.data.name, config.training
     output = stage_dir(name, 'train')

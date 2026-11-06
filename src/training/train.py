@@ -46,7 +46,7 @@ def train(
             and selects nothing.
         config: The `training` section.
         device: Where batches go.
-        rng: Shuffles and buckets the batches.
+        rng: Shuffles the training cuts.
         on_epoch: Called with every epoch's record.
     """
     optimizer = torch.optim.AdamW(params=model.parameters(), lr=config.lr, weight_decay=0.0)
@@ -63,7 +63,6 @@ def train(
             train_log,
             batch_size=config.batch_size,
             window=config.window,
-            bucket_batches=config.bucket_batches,
             rng=rng,
         ):
             batch = batch.to(device)

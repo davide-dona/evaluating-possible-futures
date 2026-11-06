@@ -11,7 +11,7 @@ from src.models.lstm import GateDropoutLSTMCell, GateMasks, LSTMState
 
 
 def embedding_dim(num_activities: int) -> int:
-    """The width of the activity embeddings, by the rule of thumb of the original U-ED-LSTM."""
+    """The width of the activity embeddings."""
     return min(600, round(1.6 * (num_activities + 2) ** 0.56))
 
 
@@ -123,7 +123,7 @@ class UEDLSTM(nn.Module):
         rows = targets.size(dim=0)
         encoded = self.encode(prefixes, masks=self._masks(self.encoder_cells, rows=rows))
         decoder_masks = self._masks(self.decoder_cells, rows=rows)
-        inputs = _last_events(prefixes)
+        inputs = prefixes.last_events()
         states: LSTMState | list[LSTMState] = encoded
         means, log_variances = [], []
         for position in range(targets.size(dim=1)):
@@ -181,12 +181,12 @@ class UEDLSTM(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         batch_size = prefixes.length.size(dim=0)
         rows, device = batch_size * num_samples, prefixes.length.device
-        prefixes = Prefixes(*(field.repeat_interleave(num_samples, dim=0) for field in prefixes))
+        prefixes = prefixes.repeat_interleave(num_samples)
         encoded = self.encode(
             prefixes, masks=self._masks(self.encoder_cells, rows=rows) if sampled else None
         )
         states: LSTMState | list[LSTMState] = encoded
-        inputs = _last_events(prefixes)
+        inputs = prefixes.last_events()
         activities = torch.full(size=(rows, max_steps), fill_value=PAD, device=device)
         # The output row of every row still decoding.
         live = torch.arange(end=rows, device=device)
@@ -238,11 +238,4 @@ def _stack(*, input_size: int, hidden_size: int, layers: int) -> nn.ModuleList:
             input_size=input_size if layer == 0 else hidden_size, hidden_size=hidden_size
         )
         for layer in range(layers)
-    )
-
-
-def _last_events(prefixes: Prefixes) -> torch.Tensor:
-    """The last real event of every prefix, `[B, P] -> [B]`."""
-    return prefixes.activities.gather(dim=1, index=(prefixes.length - 1).unsqueeze(dim=1)).squeeze(
-        dim=1
     )
