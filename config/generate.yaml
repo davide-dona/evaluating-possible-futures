@@ -1,0 +1,9 @@
+defaults:
+- output/default
+- dataset: ???
+- _self_
+seed: 42
+device: cuda:0
+num_samples: 100
+# The most draws decoded at once.
+max_rows: 8192

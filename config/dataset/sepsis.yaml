@@ -1,0 +1,13 @@
+# @package _global_
+data:
+  name: sepsis
+  case_key: Case ID
+  activity_key: Activity
+  timestamp_key: time:timestamp
+  separator: ';'
+  val_split: 0.15
+  test_split: 0.2
+  split_seed: 42
+  max_case_length_percentile: 98.5
+  # Also how long before the end of the log a kept case must start.
+  max_case_duration_percentile: 95
