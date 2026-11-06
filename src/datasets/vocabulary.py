@@ -9,9 +9,9 @@ import pandas as pd
 from src.logs.keys import ACTIVITY_KEY
 
 PAD = 0
+# The first output class: the model predicts UNK, EOS, and the activities, which are the
+# vocabulary from UNK on, so output class `c` is vocabulary index `c + UNK`.
 UNK = 1
-# The first output class: the model predicts EOS and the activities, which are the vocabulary
-# from EOS on, so output class `c` is vocabulary index `c + EOS`.
 EOS = 2
 
 _SPECIAL_NAMES = ('<PAD>', '<UNK>', '<EOS>')
@@ -41,8 +41,8 @@ class Vocabulary:
 
     @property
     def num_outputs(self) -> int:
-        """The number of classes the model predicts: EOS and every activity."""
-        return self.size - EOS
+        """The number of classes the model predicts: UNK, EOS, and every activity."""
+        return self.size - UNK
 
     @property
     def names(self) -> tuple[str, ...]:
@@ -53,6 +53,10 @@ class Vocabulary:
         """Map activity names to indices, UNK for an activity the train split does not hold."""
         index = {name: i for i, name in enumerate(self.names)}
         return activities.map(index).fillna(UNK).to_numpy(np.int64)
+
+    def known(self, activities: pd.Series) -> pd.Series:
+        """The activity names, UNK's for an activity the train split does not hold."""
+        return activities.where(activities.isin(self.activities), self.names[UNK])
 
     def save(self, path: Path) -> None:
         path.write_text(
