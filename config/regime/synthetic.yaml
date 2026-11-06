@@ -1,0 +1,4 @@
+# @package _global_
+training:
+  lr: 1.0e-5
+  batch_size: 128

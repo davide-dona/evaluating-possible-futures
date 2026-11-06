@@ -1,0 +1,20 @@
+defaults:
+- output/default
+- dataset: ???
+# A multirun first composes without its sweep values, leaving `dataset` missing. Falling back to
+# ??? makes Hydra skip the regime there too, instead of failing on the missing interpolation.
+- regime: ${oc.select:dataset,???}
+- model: u_ed_lstm
+- _self_
+seed: 42
+device: cuda:0
+training:
+  epochs: 100
+  # Events after the prefix each training example targets, EOS past the end of the case.
+  window: 5
+  weight_penalty: 1.0e-4
+  grad_clip_norm: 1.0
+  teacher_forcing:
+    start: 0.8
+    decay: 0.96
+    every: 20
