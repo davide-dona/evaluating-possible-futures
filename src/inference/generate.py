@@ -5,7 +5,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import torch
 
-from src.datasets.dataset import EncodedLog, test_prefix_batches
+from src.datasets.dataset import Cuts, EncodedLog, test_prefix_batches
 from src.datasets.vocabulary import PAD, Vocabulary
 from src.models.u_ed_lstm import UEDLSTM
 
@@ -69,21 +69,49 @@ def generate(
                 )
             else:
                 activities, truncated = model.greedy(prefixes, max_steps=max_steps)
-            activities = activities.flatten(end_dim=1).cpu().numpy()  # [B, S, L] -> [B * S, L]
-            real = activities != PAD
-            offsets = np.concatenate([[0], np.cumsum(real.sum(axis=1))]).astype(np.int32)
-            values = pa.DictionaryArray.from_arrays(
-                indices=pa.array(activities[real].astype(np.int16)), dictionary=names
+            table = suffix_table(
+                log,
+                cuts,
+                activities=activities.flatten(end_dim=1).cpu().numpy(),  # [B, S, L] -> [B * S, L]
+                truncated=truncated.flatten().cpu().numpy(),
+                draws=draws,
+                names=names,
             )
-            columns = {
-                CASE_COLUMN: pa.array(np.repeat(log.cases[cuts.case], draws), type=pa.string()),
-                PREFIX_LENGTH_COLUMN: pa.array(np.repeat(cuts.length, draws).astype(np.int32)),
-                DRAW_COLUMN: pa.array(np.tile(np.arange(draws, dtype=np.int32), len(cuts.case))),
-                ACTIVITIES_COLUMN: pa.ListArray.from_arrays(
-                    offsets=pa.array(offsets), values=values
-                ),
-                TRUNCATED_COLUMN: pa.array(truncated.flatten().cpu().numpy()),
-            }
-            writer.write_table(pa.table(columns, schema=SCHEMA))
+            writer.write_table(table)
             prefixes_written += len(cuts.case)
     return prefixes_written
+
+
+def suffix_table(
+    log: EncodedLog,
+    cuts: Cuts,
+    *,
+    activities: np.ndarray,
+    truncated: np.ndarray,
+    draws: int,
+    names: pa.Array,
+) -> pa.Table:
+    """The rows of `SCHEMA` for the draws of a batch of prefixes.
+
+    Args:
+        log: The split the prefixes are cut from.
+        cuts: The prefixes.
+        activities: The activity indices of every draw, PAD past its end, `[N * draws, L]`, the
+            draws of a prefix consecutive.
+        truncated: Whether each draw reached the step limit without ending, `[N * draws]`.
+        draws: Draws per prefix.
+        names: The name of every vocabulary index.
+    """
+    real = activities != PAD
+    offsets = np.concatenate([[0], np.cumsum(real.sum(axis=1))]).astype(np.int32)
+    values = pa.DictionaryArray.from_arrays(
+        indices=pa.array(activities[real].astype(np.int16)), dictionary=names
+    )
+    columns = {
+        CASE_COLUMN: pa.array(np.repeat(log.cases[cuts.case], draws), type=pa.string()),
+        PREFIX_LENGTH_COLUMN: pa.array(np.repeat(cuts.length, draws).astype(np.int32)),
+        DRAW_COLUMN: pa.array(np.tile(np.arange(draws, dtype=np.int32), len(cuts.case))),
+        ACTIVITIES_COLUMN: pa.ListArray.from_arrays(offsets=pa.array(offsets), values=values),
+        TRUNCATED_COLUMN: pa.array(truncated),
+    }
+    return pa.table(columns, schema=SCHEMA)

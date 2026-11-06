@@ -9,21 +9,25 @@ from src.evaluation.scores import score_generations
 from src.logs.io import read_split
 from src.logs.keys import Split
 
-DECODINGS = ('sampled', 'greedy')
-
 
 def run(config: DictConfig) -> None:
-    """Score the sampled and greedy suffixes of every test prefix and print the means."""
+    """Score the suffixes of every test prefix in each file of the generate and baselines
+    stages, and print the means."""
     name = config.data.name
-    generations = stage_dir(name, 'generate')
+    generations = [
+        *sorted(stage_dir(name, 'generate').glob('*.parquet')),
+        *sorted(stage_dir(name, 'baselines').glob('*.parquet')),
+    ]
     output = stage_dir(name, 'evaluate') / 'scores.parquet'
-    banner(f'Scoring the suffixes of "{name}"', {'generations': generations, 'scores': output})
+    banner(
+        f'Scoring the suffixes of "{name}"',
+        {'decodings': ', '.join(path.stem for path in generations), 'scores': output},
+    )
     test = read_split(split_file(name, Split.TEST))
     frames = []
-    for decoding in DECODINGS:
-        with step(f'Scoring the {decoding} suffixes'):
-            scores = score_generations(generations / f'{decoding}.parquet', test)
-            frames.append(scores.assign(decoding=decoding))
+    for path in generations:
+        with step(f'Scoring the {path.stem} suffixes'):
+            frames.append(score_generations(path, test).assign(decoding=path.stem))
     scores = pd.concat(frames, ignore_index=True)
     output.parent.mkdir(parents=True, exist_ok=True)
     scores.to_parquet(output, index=False)

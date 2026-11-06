@@ -53,6 +53,43 @@ The out-of-time split puts every case still running at the start of the case at 
 percentile of case starts into test. A test case that started before that moment is scored only
 on the prefixes that reach past it, since training may have seen its earlier events.
 
+## Synthetic log
+
+On a real log the true distribution of the suffixes is unknown. The synthetic log comes from a
+known process, so the model can be compared with forecasts drawn from the truth:
+
+```
+        ┌─ B ─┐            ┌─ E ─┐
+  A ────┤     ├── D ───────┤     ├── G
+        └─ C ─┘            └─ F ─┘
+```
+
+A case takes B with probability 0.7 and C otherwise. After D, it takes E with probability 0.9 if
+it went through B and 0.3 if it went through C, so a first-order Markov chain, which sees only D,
+cannot tell the two apart. The probabilities and the 20,000 cases are set in
+`config/dataset/synthetic.yaml`.
+
+```sh
+uv run python -m pipelines.simulate
+uv run python -m pipelines.preprocess dataset=synthetic
+uv run python -m pipelines.baselines
+uv run python -m pipelines.train dataset=synthetic
+uv run python -m pipelines.generate dataset=synthetic
+uv run python -m pipelines.evaluate dataset=synthetic
+```
+
+`simulate` writes `data/synthetic/original.csv`, which the other stages read like any original
+log. `baselines` needs no model and writes three more decodings to `outputs/synthetic/baselines/`:
+
+| Decoding | Suffixes of every test prefix |
+| --- | --- |
+| oracle_sampled | 100 draws from the true process |
+| oracle_greedy | 1 suffix, the most probable activity under the true process at every step |
+| markov_greedy | As oracle_greedy, under a first-order Markov chain fitted on train |
+
+`evaluate` scores every decoding in `outputs/<dataset>/generate/` and
+`outputs/<dataset>/baselines/`.
+
 ## Scores
 
 Let $x_1, \dots, x_K$ denote the suffixes drawn for a prefix, $y$ the observed suffix, and $d$ a
