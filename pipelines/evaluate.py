@@ -3,11 +3,12 @@ import pandas as pd
 from omegaconf import DictConfig
 
 from pipelines.helpers.console import banner, step
-from pipelines.helpers.paths import split_file, stage_dir
+from pipelines.helpers.paths import split_file, stage_dir, vocabulary_file
+from src.datasets.vocabulary import Vocabulary
 from src.evaluation.distances import DISTANCES
 from src.evaluation.scores import score_generations
 from src.logs.io import read_split
-from src.logs.keys import Split
+from src.logs.keys import ACTIVITY_KEY, Split
 
 
 def run(config: DictConfig) -> None:
@@ -23,7 +24,9 @@ def run(config: DictConfig) -> None:
         f'Scoring the suffixes of "{name}"',
         {'decodings': ', '.join(path.stem for path in generations), 'scores': output},
     )
+    vocabulary = Vocabulary.load(vocabulary_file(name))
     test = read_split(split_file(name, Split.TEST))
+    test[ACTIVITY_KEY] = vocabulary.known(test[ACTIVITY_KEY])
     frames = []
     for path in generations:
         with step(f'Scoring the {path.stem} suffixes'):

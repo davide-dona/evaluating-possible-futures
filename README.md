@@ -61,6 +61,10 @@ The out-of-time split puts every case still running at the start of the case at 
 percentile of case starts into test. A test case that started before that moment is scored only
 on the prefixes that reach past it, since training may have seen its earlier events.
 
+An activity of val or test that train does not hold is encoded as `<UNK>`, which is also an
+output class of the model, and is scored as `<UNK>`. A forecast can therefore predict that an
+activity unseen in train comes next, but not which one.
+
 ## Synthetic log
 
 On a real log the true distribution of the suffixes is unknown. The synthetic log comes from a
