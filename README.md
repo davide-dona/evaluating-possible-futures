@@ -102,6 +102,25 @@ log. `baselines` needs no model and writes three more decodings to `outputs/synt
 `evaluate` scores every decoding in `outputs/<dataset>/generate/` and
 `outputs/<dataset>/baselines/`.
 
+## Tables
+
+```sh
+uv run python -m pipelines.tables
+```
+
+`tables` writes the three tables of the paper to `outputs/tables/`:
+
+| Table | Rows | Columns |
+| --- | --- | --- |
+| `real.tex` | Every decoding, grouped by real log | Mean DLS and the three energy scores, the best mean of every log in bold |
+| `synthetic.tex` | Every decoding of the synthetic log | As `real.tex` |
+| `properties.tex` | Every preprocessed log | Cases, events, variants, activities, and case length and duration |
+
+The headers use the metric macros of the paper's preamble, and the rows use these macros, which
+the preamble must define: `\Sampled`, `\Greedy`, `\OracleSampled`, `\OracleGreedy` and
+`\MarkovGreedy`. The logs of every table, their printed names, and the order of the rows are set
+in `config/tables.yaml`.
+
 ## Scores
 
 Let $x_1, \dots, x_K$ denote the suffixes drawn for a prefix, $y$ the observed suffix, and $d$ a

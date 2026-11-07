@@ -5,8 +5,7 @@ from omegaconf import DictConfig
 from pipelines.helpers.console import banner, step
 from pipelines.helpers.paths import split_file, stage_dir, vocabulary_file
 from src.datasets.vocabulary import Vocabulary
-from src.evaluation.distances import DISTANCES
-from src.evaluation.scores import score_generations
+from src.evaluation.scores import score_generations, summary
 from src.logs.io import read_split
 from src.logs.keys import ACTIVITY_KEY, Split
 
@@ -34,17 +33,7 @@ def run(config: DictConfig) -> None:
     scores = pd.concat(frames, ignore_index=True)
     output.parent.mkdir(parents=True, exist_ok=True)
     scores.to_parquet(output, index=False)
-    print(f'Wrote {len(scores):,} rows to {output}\n\n{summary(scores).to_string()}')
-
-
-def summary(scores: pd.DataFrame) -> pd.DataFrame:
-    """The mean DLS and fair energy scores of every decoding, one row each, every prefix weighed
-    equally."""
-    means = scores.groupby('decoding', sort=False).mean(numeric_only=True)
-    columns = {'DLS': 1.0 - means['dl_accuracy']}
-    for distance in DISTANCES:
-        columns[f'ES {distance}'] = means[f'{distance}_accuracy'] - means[f'{distance}_spread']
-    return pd.DataFrame(columns).round(4)
+    print(f'Wrote {len(scores):,} rows to {output}\n\n{summary(scores).round(4).to_string()}')
 
 
 @hydra.main(version_base='1.3', config_path='../config', config_name='evaluate')

@@ -82,6 +82,16 @@ def score_generations(generations: Path, test: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def summary(scores: pd.DataFrame) -> pd.DataFrame:
+    """The mean DLS and fair energy scores of every decoding, one row each, every prefix weighed
+    equally."""
+    means = scores.groupby('decoding', sort=False).mean(numeric_only=True)
+    columns = {'DLS': 1.0 - means['dl_accuracy']}
+    for distance in DISTANCES:
+        columns[f'ES {distance}'] = means[f'{distance}_accuracy'] - means[f'{distance}_spread']
+    return pd.DataFrame(columns)
+
+
 def _characters(names: list[str]) -> dict[str, str]:
     """One distinct character per activity name, in order of first appearance."""
     unique = dict.fromkeys(names)

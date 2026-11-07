@@ -1,0 +1,29 @@
+defaults:
+- override hydra/job_logging: disabled
+- override hydra/hydra_logging: disabled
+- _self_
+hydra:
+  run:
+    dir: outputs/tables
+  job:
+    chdir: false
+# The name the paper prints for every dataset.
+datasets:
+  sepsis: Sepsis
+  bpic12: BPIC12
+  bpic17: BPIC17
+  bpic19: BPIC19
+  synthetic: Synthetic
+# The datasets of every table of scores, whose rows are grouped by dataset in this order.
+scores:
+  real: [sepsis, bpic12, bpic17, bpic19]
+  synthetic: [synthetic]
+# The rows of the table of the properties of the preprocessed logs, in this order.
+properties: [sepsis, bpic12, bpic17, bpic19, synthetic]
+# The rows of every dataset, in this order, as macros of the paper's preamble.
+decodings:
+  sampled: \Sampled
+  greedy: \Greedy
+  oracle_sampled: \OracleSampled
+  oracle_greedy: \OracleGreedy
+  markov_greedy: \MarkovGreedy
