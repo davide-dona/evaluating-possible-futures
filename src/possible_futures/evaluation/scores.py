@@ -1,7 +1,9 @@
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import torch
 
 from possible_futures.evaluation.distances import DISTANCES
 from possible_futures.inference.generate import CASE_COLUMN, PREFIX_LENGTH_COLUMN, read_generations
@@ -34,12 +36,13 @@ def prefix_scores(draws: list[str], observed: str) -> dict[str, float]:
     return scores
 
 
-def score_generations(generations: Path, test: pd.DataFrame) -> pd.DataFrame:
+def score_generations(generations: Path, test: pd.DataFrame, *, workers: int) -> pd.DataFrame:
     """Score every prefix of a generations file against its observed suffix.
 
     Args:
         generations: A file in the `SCHEMA` of `possible_futures.inference.generate`.
         test: The test split, read by `read_split`.
+        workers: Processes scoring the prefixes in parallel.
 
     Returns:
         One row per prefix: its case, its length, and the `prefix_scores` columns.
@@ -49,18 +52,21 @@ def score_generations(generations: Path, test: pd.DataFrame) -> pd.DataFrame:
     traces = activities.groupby(test[CASE_KEY], sort=False).agg(''.join)
     cases = draws.table[CASE_COLUMN].to_numpy(zero_copy_only=False)
     lengths = draws.table[PREFIX_LENGTH_COLUMN].to_numpy()
-    rows = []
-    for start, stop in draws.prefixes():
-        case, length = cases[start], int(lengths[start])
-        observed = traces[case][length:]
-        rows.append(
-            {
-                CASE_COLUMN: case,
-                PREFIX_LENGTH_COLUMN: length,
-                **prefix_scores(draws.suffixes[start:stop], observed),
-            }
+    bounds = list(draws.prefixes())
+    starts = [start for start, _ in bounds]
+    drawn = [draws.suffixes[start:stop] for start, stop in bounds]
+    observed = [traces[cases[start]][lengths[start] :] for start in starts]
+    # One torch thread per process, so the processes do not oversubscribe the cores.
+    with ProcessPoolExecutor(
+        max_workers=workers, initializer=torch.set_num_threads, initargs=(1,)
+    ) as pool:
+        scores = pool.map(
+            prefix_scores, drawn, observed, chunksize=max(1, len(starts) // (16 * workers))
         )
-    return pd.DataFrame(rows)
+        frame = pd.DataFrame(list(scores))
+    frame.insert(0, CASE_COLUMN, cases[starts])
+    frame.insert(1, PREFIX_LENGTH_COLUMN, lengths[starts].astype(int))
+    return frame
 
 
 def summary(scores: pd.DataFrame) -> pd.DataFrame:

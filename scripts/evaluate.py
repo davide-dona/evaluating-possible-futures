@@ -22,7 +22,11 @@ def run(config: DictConfig) -> None:
     output = stage_dir(name, 'evaluate') / 'scores.parquet'
     banner(
         f'Scoring the suffixes of "{name}"',
-        {'decodings': ', '.join(path.stem for path in generations), 'scores': output},
+        {
+            'decodings': ', '.join(path.stem for path in generations),
+            'workers': config.workers,
+            'scores': output,
+        },
     )
     vocabulary = Vocabulary.load(vocabulary_file(name))
     test = read_split(split_file(name, Split.TEST))
@@ -30,7 +34,8 @@ def run(config: DictConfig) -> None:
     frames = []
     for path in generations:
         with step(f'Scoring the {path.stem} suffixes'):
-            frames.append(score_generations(path, test).assign(decoding=path.stem))
+            scores = score_generations(path, test, workers=config.workers)
+            frames.append(scores.assign(decoding=path.stem))
     scores = pd.concat(frames, ignore_index=True)
     output.parent.mkdir(parents=True, exist_ok=True)
     scores.to_parquet(output, index=False)

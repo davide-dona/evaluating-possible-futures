@@ -2,3 +2,5 @@ defaults:
 - output/default
 - dataset: ???
 - _self_
+# Processes scoring the prefixes in parallel.
+workers: 8

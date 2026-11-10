@@ -63,7 +63,7 @@ resolved configuration in `.hydra/config.yaml` inside its output directory.
 | generate | `outputs/<dataset>/generate/` | Writes `sampled.parquet`, one row per drawn suffix of every test prefix. |
 | collapse | `outputs/<dataset>/collapse/` | Writes `medoid.parquet`, the medoid of the sampled suffixes of every test prefix. |
 | baselines | `outputs/<dataset>/baselines/` | Writes `unconditional.parquet`, the suffixes drawn from train for every test prefix. It needs no model. |
-| evaluate | `outputs/<dataset>/evaluate/` | Writes `scores.parquet`, one row per prefix and decoding, and prints the means. |
+| evaluate | `outputs/<dataset>/evaluate/` | Writes `scores.parquet`, one row per prefix and decoding, and prints the means. It scores the prefixes in `workers` processes, 8 by default. |
 
 `evaluate` scores every decoding in `outputs/<dataset>/generate/`, `outputs/<dataset>/collapse/`
 and `outputs/<dataset>/baselines/`. A decoding is one Parquet file, named after it.

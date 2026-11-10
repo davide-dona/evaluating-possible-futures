@@ -1,6 +1,7 @@
 from collections.abc import Callable, Sequence
 
 import numpy as np
+import torch
 from rapidfuzz import process
 from rapidfuzz.distance import DamerauLevenshtein
 
@@ -34,7 +35,8 @@ def bigram(suffixes: Sequence[str]) -> np.ndarray:
     vocabulary, columns = np.unique(pairs, return_inverse=True)
     counts = np.zeros(shape=(len(codes), len(vocabulary)))
     np.add.at(counts, (rows, columns), 1.0)
-    l1 = np.abs(counts[:, None, :] - counts[None, :, :]).sum(axis=-1)  # [N, N, V] -> [N, N]
+    rows = torch.from_numpy(counts).unsqueeze(dim=0)  # [N, V] -> [1, N, V]
+    l1 = torch.cdist(rows, rows, p=1.0).squeeze(dim=0).numpy()  # [1, N, N] -> [N, N]
     sizes = counts.sum(axis=1)
     return l1 / (sizes[:, None] + sizes[None, :])
 
