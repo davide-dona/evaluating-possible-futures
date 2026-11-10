@@ -2,20 +2,10 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pyarrow.compute as pc
-import pyarrow.parquet as pq
 
 from src.evaluation.distances import DISTANCES
-from src.inference.generate import (
-    ACTIVITIES_COLUMN,
-    CASE_COLUMN,
-    DRAW_COLUMN,
-    PREFIX_LENGTH_COLUMN,
-)
+from src.inference.generate import CASE_COLUMN, PREFIX_LENGTH_COLUMN, read_generations
 from src.logs.keys import ACTIVITY_KEY, CASE_KEY
-
-# The first character an activity is encoded as, in the Unicode private use area.
-_FIRST_CHARACTER = 0xE000
 
 
 def prefix_scores(draws: list[str], observed: str) -> dict[str, float]:
@@ -48,35 +38,26 @@ def score_generations(generations: Path, test: pd.DataFrame) -> pd.DataFrame:
     """Score every prefix of a generations file against its observed suffix.
 
     Args:
-        generations: A file written by `src.inference.generate.generate`.
+        generations: A file in the `SCHEMA` of `src.inference.generate`.
         test: The test split, read by `read_split`.
 
     Returns:
         One row per prefix: its case, its length, and the `prefix_scores` columns.
     """
-    table = pq.read_table(generations).unify_dictionaries().combine_chunks()
-    activities = table[ACTIVITIES_COLUMN].chunk(0)
-    names = activities.values.dictionary.to_pylist()
-    characters = _characters([*names, *test[ACTIVITY_KEY].unique()])
-    table_characters = np.array([characters[name] for name in names], dtype=object)
-    drawn = table_characters[activities.values.indices.to_numpy(zero_copy_only=False)]
-    offsets = activities.offsets.to_numpy()
-    suffixes = [''.join(drawn[a:b]) for a, b in zip(offsets[:-1], offsets[1:], strict=True)]
-
-    traces = test[ACTIVITY_KEY].map(characters).groupby(test[CASE_KEY], sort=False).agg(''.join)
-    cases = table[CASE_COLUMN].to_numpy(zero_copy_only=False)
-    lengths = table[PREFIX_LENGTH_COLUMN].to_numpy()
-    starts = np.flatnonzero(pc.equal(table[DRAW_COLUMN], 0).to_numpy(zero_copy_only=False))
-    stops = np.append(starts[1:], len(table))
+    draws = read_generations(generations, other_names=test[ACTIVITY_KEY].unique())
+    activities = test[ACTIVITY_KEY].map(draws.characters)
+    traces = activities.groupby(test[CASE_KEY], sort=False).agg(''.join)
+    cases = draws.table[CASE_COLUMN].to_numpy(zero_copy_only=False)
+    lengths = draws.table[PREFIX_LENGTH_COLUMN].to_numpy()
     rows = []
-    for start, stop in zip(starts, stops, strict=True):
+    for start, stop in draws.prefixes():
         case, length = cases[start], int(lengths[start])
         observed = traces[case][length:]
         rows.append(
             {
                 CASE_COLUMN: case,
                 PREFIX_LENGTH_COLUMN: length,
-                **prefix_scores(suffixes[start:stop], observed),
+                **prefix_scores(draws.suffixes[start:stop], observed),
             }
         )
     return pd.DataFrame(rows)
@@ -90,9 +71,3 @@ def summary(scores: pd.DataFrame) -> pd.DataFrame:
     for distance in DISTANCES:
         columns[f'ES {distance}'] = means[f'{distance}_accuracy'] - means[f'{distance}_spread']
     return pd.DataFrame(columns)
-
-
-def _characters(names: list[str]) -> dict[str, str]:
-    """One distinct character per activity name, in order of first appearance."""
-    unique = dict.fromkeys(names)
-    return {name: chr(_FIRST_CHARACTER + i) for i, name in enumerate(unique)}

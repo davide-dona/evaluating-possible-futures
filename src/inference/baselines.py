@@ -6,8 +6,11 @@ import pyarrow.parquet as pq
 
 from src.datasets.dataset import EncodedLog
 from src.datasets.vocabulary import PAD, Vocabulary
-from src.inference.generate import suffix_table
+from src.inference.generate import SCHEMA, suffix_table
 from src.simulation.processes import Process
+
+# The most draws held in memory at once while writing the unconditional forecast.
+_ROWS_PER_TABLE = 100_000
 
 
 def write_baseline(
@@ -63,4 +66,53 @@ def write_baseline(
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     pq.write_table(table, path)
+    return len(cuts.case)
+
+
+def write_unconditional(
+    train: EncodedLog,
+    log: EncodedLog,
+    vocabulary: Vocabulary,
+    *,
+    path: Path,
+    num_samples: int,
+    rng: np.random.Generator,
+) -> int:
+    """Write a forecast that ignores the prefix: for every scored test prefix, `num_samples`
+    suffixes drawn uniformly from the cuts of the train split, in the format of
+    `src.inference.generate.generate`.
+
+    Every prefix of train counts once, as every prefix of test does in a mean score, so the
+    draws follow the suffix distribution of train over all its prefixes.
+
+    Args:
+        train: The train split, whose suffixes are drawn.
+        log: The test split.
+        vocabulary: The vocabulary both splits are encoded with.
+        path: The Parquet file to write.
+        num_samples: Draws per prefix.
+        rng: Source of the draws.
+
+    Returns:
+        The number of prefixes written.
+    """
+    sources = train.cuts(from_min_prefix=False)
+    cuts = log.cuts(from_min_prefix=True)
+    names = pa.array(vocabulary.names, type=pa.string())
+    batch_size = max(1, _ROWS_PER_TABLE // num_samples)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with pq.ParquetWriter(path, schema=SCHEMA) as writer:
+        for first in range(0, len(cuts.case), batch_size):
+            selected = cuts.select(np.arange(first, min(first + batch_size, len(cuts.case))))
+            rows = len(selected.case) * num_samples
+            drawn = sources.select(rng.integers(len(sources.case), size=rows))
+            table = suffix_table(
+                log,
+                selected,
+                activities=train.suffixes(drawn),
+                truncated=np.zeros(rows, dtype=bool),
+                draws=num_samples,
+                names=names,
+            )
+            writer.write_table(table)
     return len(cuts.case)

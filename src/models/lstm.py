@@ -72,7 +72,7 @@ class GateDropoutLSTMCell(nn.Module):
         inputs: torch.Tensor,
         state: LSTMState,
         *,
-        masks: GateMasks | None,
+        masks: GateMasks,
         keep: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, LSTMState]:
         """Run the layer over inputs `[B, T, I]` from `state`.
@@ -80,7 +80,7 @@ class GateDropoutLSTMCell(nn.Module):
         Args:
             inputs: One input per position.
             state: The hidden and cell states before the first position.
-            masks: The dropout masks, shared by every position, or None for no dropout.
+            masks: The dropout masks, shared by every position.
             keep: `[B, T]`, False where a row keeps its state instead of advancing, or None to
                 advance every row at every position.
 
@@ -88,15 +88,12 @@ class GateDropoutLSTMCell(nn.Module):
             The hidden state after each position, `[B, T, H]`, and the final state.
         """
         gate_inputs = inputs.unsqueeze(dim=2).expand(-1, -1, 4, -1)  # [B, T, I] -> [B, T, 4, I]
-        if masks is not None:
-            gate_inputs = gate_inputs * masks.inputs.unsqueeze(dim=1)
+        gate_inputs = gate_inputs * masks.inputs.unsqueeze(dim=1)
         projected = torch.einsum('btgi,ghi->btgh', gate_inputs, self.input_weights)
         hidden, cell = state
         outputs = []
         for position in range(inputs.size(dim=1)):
-            gate_hidden = hidden.unsqueeze(dim=1).expand(-1, 4, -1)  # [B, H] -> [B, 4, H]
-            if masks is not None:
-                gate_hidden = gate_hidden * masks.hidden
+            gate_hidden = hidden.unsqueeze(dim=1).expand(-1, 4, -1) * masks.hidden  # [B, 4, H]
             next_hidden, next_cell = self._step(
                 projected_inputs=projected[:, position], hidden=gate_hidden, cell=cell
             )

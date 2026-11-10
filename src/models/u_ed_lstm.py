@@ -69,7 +69,7 @@ class UEDLSTM(nn.Module):
         self.mean_head = nn.Linear(in_features=hidden_size, out_features=num_outputs)
         self.log_variance_head = nn.Linear(in_features=hidden_size, out_features=num_outputs)
 
-    def encode(self, prefixes: Prefixes, *, masks: list[GateMasks] | None) -> LSTMState:
+    def encode(self, prefixes: Prefixes, *, masks: list[GateMasks]) -> LSTMState:
         """Read the real events of prefixes `[B, P]` and return the top layer's final state."""
         inputs = self.encoder_embedding(prefixes.activities)  # [B, P] -> [B, P, D]
         positions = torch.arange(end=inputs.size(dim=1), device=inputs.device)
@@ -77,9 +77,7 @@ class UEDLSTM(nn.Module):
         zeros = inputs.new_zeros(size=(inputs.size(dim=0), self.config['hidden_size']))
         state = (zeros, zeros)
         for layer, cell in enumerate(self.encoder_cells):
-            inputs, state = cell(
-                inputs, state, masks=None if masks is None else masks[layer], keep=keep
-            )
+            inputs, state = cell(inputs, state, masks=masks[layer], keep=keep)
         return state
 
     def decode_step(
@@ -87,14 +85,14 @@ class UEDLSTM(nn.Module):
         activities: torch.Tensor,
         states: LSTMState | list[LSTMState],
         *,
-        masks: list[GateMasks] | None,
+        masks: list[GateMasks],
     ) -> tuple[torch.Tensor, torch.Tensor, list[LSTMState]]:
         """Read one decoder input per row and predict the next event's logit distribution.
 
         Args:
             activities: `[B]` the previous event of every row.
             states: The encoder's final state at the first step, then each layer's own state.
-            masks: The decoder's dropout masks, one per layer, or None for no dropout.
+            masks: The decoder's dropout masks, one per layer.
 
         Returns:
             The logit means and log-variances `[B, C]` over UNK, EOS, and every activity, and each
@@ -106,7 +104,7 @@ class UEDLSTM(nn.Module):
         new_states = []
         for layer, cell in enumerate(self.decoder_cells):
             state = below if first_step else states[layer]
-            inputs, state = cell(inputs, state, masks=None if masks is None else masks[layer])
+            inputs, state = cell(inputs, state, masks=masks[layer])
             new_states.append(state)
             below = state
         features = inputs.squeeze(dim=1)  # [B, 1, H] -> [B, H]
@@ -166,41 +164,21 @@ class UEDLSTM(nn.Module):
             The activity indices `[B, S, L]`, PAD past each draw's end, and `[B, S]` whether a
             draw reached `max_steps` without EOS.
         """
-        return self._generate(prefixes, num_samples=num_samples, max_steps=max_steps, sampled=True)
-
-    @torch.no_grad()
-    def greedy(self, prefixes: Prefixes, *, max_steps: int) -> tuple[torch.Tensor, torch.Tensor]:
-        """Decode one suffix per prefix with dropout off, taking the class of the highest logit
-        mean at every step.
-
-        Returns:
-            As `sample`, with `S = 1`.
-        """
-        return self._generate(prefixes, num_samples=1, max_steps=max_steps, sampled=False)
-
-    def _generate(
-        self, prefixes: Prefixes, *, num_samples: int, max_steps: int, sampled: bool
-    ) -> tuple[torch.Tensor, torch.Tensor]:
         batch_size = prefixes.length.size(dim=0)
         rows, device = batch_size * num_samples, prefixes.length.device
         prefixes = prefixes.repeat_interleave(num_samples)
-        encoded = self.encode(
-            prefixes, masks=self._masks(self.encoder_cells, rows=rows) if sampled else None
-        )
+        encoded = self.encode(prefixes, masks=self._masks(self.encoder_cells, rows=rows))
         states: LSTMState | list[LSTMState] = encoded
         inputs = prefixes.last_events()
         activities = torch.full(size=(rows, max_steps), fill_value=PAD, device=device)
         # The output row of every row still decoding.
         live = torch.arange(end=rows, device=device)
         for position in range(max_steps):
-            masks = self._masks(self.decoder_cells, rows=len(live)) if sampled else None
+            masks = self._masks(self.decoder_cells, rows=len(live))
             mean, log_variance, states = self.decode_step(inputs, states, masks=masks)
-            if sampled:
-                logits = mean + (0.5 * log_variance).exp() * torch.randn_like(mean)
-                classes = torch.multinomial(input=logits.softmax(dim=-1), num_samples=1)
-                classes = classes.squeeze(dim=1)  # [B, 1] -> [B]
-            else:
-                classes = mean.argmax(dim=-1)
+            logits = mean + (0.5 * log_variance).exp() * torch.randn_like(mean)
+            classes = torch.multinomial(input=logits.softmax(dim=-1), num_samples=1)
+            classes = classes.squeeze(dim=1)  # [B, 1] -> [B]
             emitted = classes + UNK
             continuing = (emitted != EOS).nonzero().squeeze(dim=1)
             live, inputs = live[continuing], emitted[continuing]

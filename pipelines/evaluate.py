@@ -11,12 +11,13 @@ from src.logs.keys import ACTIVITY_KEY, Split
 
 
 def run(config: DictConfig) -> None:
-    """Score the suffixes of every test prefix in each file of the generate and baselines
-    stages, and print the means."""
+    """Score the suffixes of every test prefix in each file of the generate, collapse, and
+    baselines stages, and print the means."""
     name = config.data.name
     generations = [
-        *sorted(stage_dir(name, 'generate').glob('*.parquet')),
-        *sorted(stage_dir(name, 'baselines').glob('*.parquet')),
+        path
+        for stage in ('generate', 'collapse', 'baselines')
+        for path in sorted(stage_dir(name, stage).glob('*.parquet'))
     ]
     output = stage_dir(name, 'evaluate') / 'scores.parquet'
     banner(

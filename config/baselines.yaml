@@ -1,6 +1,6 @@
 defaults:
 - output/default
-- dataset: synthetic
+- dataset: ???
 - _self_
 seed: 42
 num_samples: 100

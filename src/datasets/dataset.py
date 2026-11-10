@@ -94,10 +94,20 @@ class EncodedLog:
 
     def targets(self, cuts: Cuts, *, window: int) -> torch.Tensor:
         """The `window` events following every cut, EOS from the end of the case on."""
-        offsets = cuts.length[:, None] + np.arange(window)[None, :]  # [B, W]
+        return torch.from_numpy(self._following(cuts, width=window, fill=EOS))
+
+    def suffixes(self, cuts: Cuts) -> np.ndarray:
+        """The whole suffix of every cut, PAD past the end of the case, `[B, L]` with `L` the
+        length of the longest suffix."""
+        width = int((self.lengths[cuts.case] - cuts.length).max())
+        return self._following(cuts, width=width, fill=PAD)
+
+    def _following(self, cuts: Cuts, *, width: int, fill: int) -> np.ndarray:
+        """The `width` events following every cut, `fill` from the end of the case on."""
+        offsets = cuts.length[:, None] + np.arange(width)[None, :]  # [B, W]
         real = offsets < self.lengths[cuts.case, None]
         index = self.starts[cuts.case, None] + offsets
-        return torch.from_numpy(np.where(real, self.activities[np.where(real, index, 0)], EOS))
+        return np.where(real, self.activities[np.where(real, index, 0)], fill)
 
 
 def training_batches(

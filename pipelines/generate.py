@@ -13,20 +13,19 @@ from src.models.u_ed_lstm import UEDLSTM
 
 
 def run(config: DictConfig) -> None:
-    """Draw sampled and greedy suffixes for every scored test prefix from the trained model."""
+    """Draw sampled suffixes for every scored test prefix from the trained model."""
     torch.manual_seed(config.seed)
     device = torch.device(config.device)
     name = config.data.name
     checkpoint = stage_dir(name, 'train') / 'model.pt'
-    output = stage_dir(name, 'generate')
+    path = stage_dir(name, 'generate') / 'sampled.parquet'
     banner(
         f'Generating suffixes on "{name}"',
         {
             'checkpoint': checkpoint,
             'device': device,
             'sampled': f'{config.num_samples} draws per prefix',
-            'greedy': '1 draw per prefix, dropout off',
-            'output': output,
+            'output': path,
         },
     )
     with step('Loading the model and encoding the test split'):
@@ -34,20 +33,17 @@ def run(config: DictConfig) -> None:
         vocabulary = Vocabulary.load(vocabulary_file(name))
         test_log = EncodedLog.from_split(read_split(split_file(name, Split.TEST)), vocabulary)
 
-    for decoding, sampled in (('sampled', True), ('greedy', False)):
-        path = output / f'{decoding}.parquet'
-        with step(f'Writing {decoding} suffixes to {path}'):
-            prefixes = generate(
-                model,
-                test_log,
-                vocabulary,
-                path=path,
-                sampled=sampled,
-                num_samples=config.num_samples,
-                max_rows=config.max_rows,
-                device=device,
-            )
-            print(f'  {prefixes:,} prefixes', flush=True)
+    with step(f'Writing sampled suffixes to {path}'):
+        prefixes = generate(
+            model,
+            test_log,
+            vocabulary,
+            path=path,
+            num_samples=config.num_samples,
+            max_rows=config.max_rows,
+            device=device,
+        )
+        print(f'  {prefixes:,} prefixes', flush=True)
 
 
 @hydra.main(version_base='1.3', config_path='../config', config_name='generate')

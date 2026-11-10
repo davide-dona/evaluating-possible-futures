@@ -1,7 +1,10 @@
+from collections.abc import Iterable, Iterator
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import torch
 
@@ -25,6 +28,44 @@ SCHEMA = pa.schema(
     ]
 )
 
+# The first character an activity is encoded as, in the Unicode private use area.
+_FIRST_CHARACTER = 0xE000
+
+
+class Generations(NamedTuple):
+    """The draws of a file in `SCHEMA`, each also as a string of one character per activity,
+    so that equal suffixes are equal strings."""
+
+    table: pa.Table  # the rows of the file
+    suffixes: list[str]  # the drawn suffix of every row
+    characters: dict[str, str]  # the character of every activity name
+
+    def prefixes(self) -> Iterator[tuple[int, int]]:
+        """The rows of every prefix, as its first row and the row past its last."""
+        first_draws = pc.equal(self.table[DRAW_COLUMN], 0).to_numpy(zero_copy_only=False)
+        starts = np.flatnonzero(first_draws)
+        return zip(starts, np.append(starts[1:], len(self.table)), strict=True)
+
+
+def read_generations(path: Path, *, other_names: Iterable[str] = ()) -> Generations:
+    """Read a file written in `SCHEMA`.
+
+    Args:
+        path: The Parquet file.
+        other_names: Activity names to give a character besides those of the file, such as the
+            activities of the observed suffixes the draws are compared with.
+    """
+    table = pq.read_table(path).unify_dictionaries().combine_chunks()
+    activities = table[ACTIVITIES_COLUMN].chunk(0)
+    names = activities.values.dictionary.to_pylist()
+    unique = dict.fromkeys([*names, *other_names])
+    characters = {name: chr(_FIRST_CHARACTER + i) for i, name in enumerate(unique)}
+    of_index = np.array([characters[name] for name in names], dtype=object)
+    drawn = of_index[activities.values.indices.to_numpy(zero_copy_only=False)]
+    offsets = activities.offsets.to_numpy()
+    suffixes = [''.join(drawn[a:b]) for a, b in zip(offsets[:-1], offsets[1:], strict=True)]
+    return Generations(table=table, suffixes=suffixes, characters=characters)
+
 
 def generate(
     model: UEDLSTM,
@@ -32,7 +73,6 @@ def generate(
     vocabulary: Vocabulary,
     *,
     path: Path,
-    sampled: bool,
     num_samples: int,
     max_rows: int,
     device: torch.device,
@@ -46,35 +86,28 @@ def generate(
         log: The test split.
         vocabulary: The vocabulary the model was trained with.
         path: The Parquet file to write.
-        sampled: Whether to draw `num_samples` suffixes by `UEDLSTM.sample`, or one by
-            `UEDLSTM.greedy`.
-        num_samples: Draws per prefix when sampled.
+        num_samples: Draws per prefix, by `UEDLSTM.sample`.
         max_rows: The most draws decoded at once.
         device: Where the model runs.
 
     Returns:
         The number of prefixes written.
     """
-    draws = num_samples if sampled else 1
     names = pa.array(vocabulary.names, type=pa.string())
     path.parent.mkdir(parents=True, exist_ok=True)
     prefixes_written = 0
     with pq.ParquetWriter(path, schema=SCHEMA) as writer:
-        for cuts, prefixes in test_prefix_batches(log, batch_size=max(1, max_rows // draws)):
+        for cuts, prefixes in test_prefix_batches(log, batch_size=max(1, max_rows // num_samples)):
             prefixes = prefixes.to(device)
-            max_steps = vocabulary.max_case_length
-            if sampled:
-                activities, truncated = model.sample(
-                    prefixes, num_samples=num_samples, max_steps=max_steps
-                )
-            else:
-                activities, truncated = model.greedy(prefixes, max_steps=max_steps)
+            activities, truncated = model.sample(
+                prefixes, num_samples=num_samples, max_steps=vocabulary.max_case_length
+            )
             table = suffix_table(
                 log,
                 cuts,
                 activities=activities.flatten(end_dim=1).cpu().numpy(),  # [B, S, L] -> [B * S, L]
                 truncated=truncated.flatten().cpu().numpy(),
-                draws=draws,
+                draws=num_samples,
                 names=names,
             )
             writer.write_table(table)

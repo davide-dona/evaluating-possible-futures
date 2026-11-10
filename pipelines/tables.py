@@ -23,24 +23,26 @@ DECIMALS = 3
 
 def run(config: DictConfig) -> None:
     """Write the LaTeX tables of the paper: one per entry of `config.scores`, holding the mean
-    scores of every decoding, and `properties.tex`, describing the preprocessed logs."""
+    scores of its decodings on its datasets, and `properties.tex`, describing the preprocessed
+    logs."""
     output = OUTPUTS / 'tables'
     banner(
         'Writing the tables of the paper',
-        {name: ', '.join(datasets) for name, datasets in config.scores.items()}
+        {name: ', '.join(table.datasets) for name, table in config.scores.items()}
         | {'properties': ', '.join(config.properties), 'output': output},
     )
     output.mkdir(parents=True, exist_ok=True)
-    for name, datasets in config.scores.items():
+    for name, table in config.scores.items():
         path = output / f'{name}.tex'
         with step(f'Writing {path}'):
             means = {
                 config.datasets[dataset]: summary(
                     pd.read_parquet(stage_dir(dataset, 'evaluate') / 'scores.parquet')
                 )
-                for dataset in datasets
+                for dataset in table.datasets
             }
-            path.write_text(scores_table(means, config.decodings))
+            decodings = {decoding: config.decodings[decoding] for decoding in table.decodings}
+            path.write_text(scores_table(means, decodings))
     path = output / 'properties.tex'
     with step(f'Writing {path}'):
         logs = {config.datasets[dataset]: read_log(dataset) for dataset in config.properties}
