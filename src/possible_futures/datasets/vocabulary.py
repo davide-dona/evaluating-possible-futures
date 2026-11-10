@@ -6,7 +6,7 @@ from typing import Self
 import numpy as np
 import pandas as pd
 
-from src.logs.keys import ACTIVITY_KEY
+from possible_futures.logs.keys import ACTIVITY_KEY
 
 PAD = 0
 # The first output class: the model predicts UNK, EOS, and the activities, which are the

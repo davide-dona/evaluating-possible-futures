@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from src.logs.keys import Split
+from possible_futures.logs.keys import Split
 
 # Relative to the repository root, which every stage runs from.
 DATA = Path('data')

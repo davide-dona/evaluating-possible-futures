@@ -8,9 +8,9 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import torch
 
-from src.datasets.dataset import Cuts, EncodedLog, test_prefix_batches
-from src.datasets.vocabulary import PAD, Vocabulary
-from src.models.u_ed_lstm import UEDLSTM
+from possible_futures.datasets.dataset import Cuts, EncodedLog, test_prefix_batches
+from possible_futures.datasets.vocabulary import PAD, Vocabulary
+from possible_futures.models.u_ed_lstm import UEDLSTM
 
 CASE_COLUMN = 'case'
 PREFIX_LENGTH_COLUMN = 'prefix_length'

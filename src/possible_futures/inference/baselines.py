@@ -4,10 +4,10 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from src.datasets.dataset import EncodedLog
-from src.datasets.vocabulary import PAD, Vocabulary
-from src.inference.generate import SCHEMA, suffix_table
-from src.simulation.processes import Process
+from possible_futures.datasets.dataset import EncodedLog
+from possible_futures.datasets.vocabulary import PAD, Vocabulary
+from possible_futures.inference.generate import SCHEMA, suffix_table
+from possible_futures.simulation.processes import Process
 
 # The most draws held in memory at once while writing the unconditional forecast.
 _ROWS_PER_TABLE = 100_000
@@ -24,7 +24,7 @@ def write_baseline(
     rng: np.random.Generator,
 ) -> int:
     """Write the suffixes a known process draws for every scored test prefix, one row per draw,
-    in the format of `src.inference.generate.generate`.
+    in the format of `possible_futures.inference.generate.generate`.
 
     Args:
         source: The process continuing every prefix.
@@ -80,7 +80,7 @@ def write_unconditional(
 ) -> int:
     """Write a forecast that ignores the prefix: for every scored test prefix, `num_samples`
     suffixes drawn uniformly from the cuts of the train split, in the format of
-    `src.inference.generate.generate`.
+    `possible_futures.inference.generate.generate`.
 
     Every prefix of train counts once, as every prefix of test does in a mean score, so the
     draws follow the suffix distribution of train over all its prefixes.

@@ -5,9 +5,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from src.datasets.dataset import Batch, Prefixes
-from src.datasets.vocabulary import EOS, PAD, UNK
-from src.models.lstm import GateDropoutLSTMCell, GateMasks, LSTMState
+from possible_futures.datasets.dataset import Batch, Prefixes
+from possible_futures.datasets.vocabulary import EOS, PAD, UNK
+from possible_futures.models.lstm import GateDropoutLSTMCell, GateMasks, LSTMState
 
 
 def embedding_dim(num_activities: int) -> int:

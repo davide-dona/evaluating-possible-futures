@@ -3,9 +3,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.evaluation.distances import DISTANCES
-from src.inference.generate import CASE_COLUMN, PREFIX_LENGTH_COLUMN, read_generations
-from src.logs.keys import ACTIVITY_KEY, CASE_KEY
+from possible_futures.evaluation.distances import DISTANCES
+from possible_futures.inference.generate import CASE_COLUMN, PREFIX_LENGTH_COLUMN, read_generations
+from possible_futures.logs.keys import ACTIVITY_KEY, CASE_KEY
 
 
 def prefix_scores(draws: list[str], observed: str) -> dict[str, float]:
@@ -38,7 +38,7 @@ def score_generations(generations: Path, test: pd.DataFrame) -> pd.DataFrame:
     """Score every prefix of a generations file against its observed suffix.
 
     Args:
-        generations: A file in the `SCHEMA` of `src.inference.generate`.
+        generations: A file in the `SCHEMA` of `possible_futures.inference.generate`.
         test: The test split, read by `read_split`.
 
     Returns:

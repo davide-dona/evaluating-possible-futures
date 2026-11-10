@@ -6,7 +6,7 @@ from typing import ClassVar
 import numpy as np
 import pandas as pd
 
-from src.logs.keys import ACTIVITY_KEY, CASE_KEY, TIMESTAMP_KEY
+from possible_futures.logs.keys import ACTIVITY_KEY, CASE_KEY, TIMESTAMP_KEY
 
 # The pseudo-activity that ends a case.
 END = '<END>'

@@ -6,8 +6,8 @@ import numpy as np
 import pandas as pd
 import torch
 
-from src.datasets.vocabulary import EOS, PAD, Vocabulary
-from src.logs.keys import ACTIVITY_KEY, CASE_KEY, MIN_PREFIX_KEY
+from possible_futures.datasets.vocabulary import EOS, PAD, Vocabulary
+from possible_futures.logs.keys import ACTIVITY_KEY, CASE_KEY, MIN_PREFIX_KEY
 
 
 class Cuts(NamedTuple):

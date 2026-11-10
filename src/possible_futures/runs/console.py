@@ -21,10 +21,10 @@ def duration(seconds: float) -> str:
 
 
 def banner(title: str, fields: Mapping[str, object]) -> None:
-    """Announce what a pipeline is about to do, before the first step of it runs.
+    """Announce what a stage is about to do, before the first step of it runs.
 
     Args:
-        title: What the pipeline does, e.g. `Generating suffixes`.
+        title: What the stage does, e.g. `Generating suffixes`.
         fields: The settings the run is about to work under, one indented line each, in the order
             given. Names are padded to a common width so the values line up.
     """

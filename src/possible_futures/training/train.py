@@ -6,8 +6,8 @@ import numpy as np
 import torch
 from omegaconf import DictConfig
 
-from src.datasets.dataset import EncodedLog, training_batches, validation_batches
-from src.models.u_ed_lstm import UEDLSTM
+from possible_futures.datasets.dataset import EncodedLog, training_batches, validation_batches
+from possible_futures.models.u_ed_lstm import UEDLSTM
 
 
 @dataclass(frozen=True)

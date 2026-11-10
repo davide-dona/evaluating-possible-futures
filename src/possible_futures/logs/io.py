@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 from omegaconf import DictConfig
 
-from src.logs.keys import ACTIVITY_KEY, CASE_KEY, MIN_PREFIX_KEY, TIMESTAMP_KEY
+from possible_futures.logs.keys import ACTIVITY_KEY, CASE_KEY, MIN_PREFIX_KEY, TIMESTAMP_KEY
 
 
 def read_original_log(path: Path, data_config: DictConfig) -> pd.DataFrame:

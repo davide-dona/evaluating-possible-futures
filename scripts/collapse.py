@@ -1,10 +1,10 @@
 import hydra
 from omegaconf import DictConfig
 
-from pipelines.helpers.console import banner, step
-from pipelines.helpers.paths import stage_dir
-from src.evaluation.distances import damerau_levenshtein
-from src.inference.medoid import write_medoids
+from possible_futures.evaluation.distances import damerau_levenshtein
+from possible_futures.inference.medoid import write_medoids
+from possible_futures.runs.console import banner, step
+from possible_futures.runs.paths import stage_dir
 
 
 def run(config: DictConfig) -> None:

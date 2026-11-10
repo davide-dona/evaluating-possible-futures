@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from src.logs.keys import CASE_KEY, MIN_PREFIX_KEY, TIMESTAMP_KEY
+from possible_futures.logs.keys import CASE_KEY, MIN_PREFIX_KEY, TIMESTAMP_KEY
 
 
 def case_durations(log: pd.DataFrame) -> pd.Series:

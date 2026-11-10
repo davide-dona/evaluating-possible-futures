@@ -2,12 +2,12 @@ import hydra
 import pandas as pd
 from omegaconf import DictConfig
 
-from pipelines.helpers.console import banner, step
-from pipelines.helpers.paths import split_file, stage_dir, vocabulary_file
-from src.datasets.vocabulary import Vocabulary
-from src.evaluation.scores import score_generations, summary
-from src.logs.io import read_split
-from src.logs.keys import ACTIVITY_KEY, Split
+from possible_futures.datasets.vocabulary import Vocabulary
+from possible_futures.evaluation.scores import score_generations, summary
+from possible_futures.logs.io import read_split
+from possible_futures.logs.keys import ACTIVITY_KEY, Split
+from possible_futures.runs.console import banner, step
+from possible_futures.runs.paths import split_file, stage_dir, vocabulary_file
 
 
 def run(config: DictConfig) -> None:

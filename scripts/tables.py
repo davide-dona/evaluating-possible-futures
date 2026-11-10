@@ -4,11 +4,11 @@ import hydra
 import pandas as pd
 from omegaconf import DictConfig
 
-from pipelines.helpers.console import banner, step
-from pipelines.helpers.paths import OUTPUTS, split_file, stage_dir
-from src.evaluation.scores import summary
-from src.logs.keys import ACTIVITY_KEY, CASE_KEY, TIMESTAMP_KEY, Split
-from src.logs.preprocessing import case_durations, case_lengths
+from possible_futures.evaluation.scores import summary
+from possible_futures.logs.keys import ACTIVITY_KEY, CASE_KEY, TIMESTAMP_KEY, Split
+from possible_futures.logs.preprocessing import case_durations, case_lengths
+from possible_futures.runs.console import banner, step
+from possible_futures.runs.paths import OUTPUTS, split_file, stage_dir
 
 # The columns of `summary` in the order printed, each with its header in the paper's macros and
 # whether a higher mean is better.

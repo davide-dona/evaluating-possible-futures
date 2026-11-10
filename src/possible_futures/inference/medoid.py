@@ -5,8 +5,8 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from src.evaluation.distances import Distance
-from src.inference.generate import DRAW_COLUMN, SCHEMA, read_generations
+from possible_futures.evaluation.distances import Distance
+from possible_futures.inference.generate import DRAW_COLUMN, SCHEMA, read_generations
 
 
 def medoid(draws: Sequence[str], distance: Distance) -> int:
@@ -29,7 +29,7 @@ def write_medoids(generations: Path, *, path: Path, distance: Distance) -> int:
     in the same format.
 
     Args:
-        generations: A file in the `SCHEMA` of `src.inference.generate`.
+        generations: A file in the `SCHEMA` of `possible_futures.inference.generate`.
         path: The Parquet file to write.
         distance: The distance between suffixes the medoid is taken under.
 

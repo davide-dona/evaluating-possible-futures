@@ -3,12 +3,10 @@ import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
 
-from pipelines.helpers.console import banner, step
-from pipelines.helpers.paths import original_log, split_file, vocabulary_file
-from src.datasets.vocabulary import Vocabulary
-from src.logs.io import read_original_log, write_split
-from src.logs.keys import ACTIVITY_KEY, CASE_KEY, MIN_PREFIX_KEY, Split
-from src.logs.preprocessing import (
+from possible_futures.datasets.vocabulary import Vocabulary
+from possible_futures.logs.io import read_original_log, write_split
+from possible_futures.logs.keys import ACTIVITY_KEY, CASE_KEY, MIN_PREFIX_KEY, Split
+from possible_futures.logs.preprocessing import (
     case_durations,
     case_lengths,
     drop_cases_starting_late,
@@ -16,6 +14,8 @@ from src.logs.preprocessing import (
     out_of_time_split,
     sort_log,
 )
+from possible_futures.runs.console import banner, step
+from possible_futures.runs.paths import original_log, split_file, vocabulary_file
 
 
 def run(data: DictConfig) -> None:

@@ -38,17 +38,18 @@ uv sync --locked
 
 ## Run the pipeline
 
-Each stage reads the files of the stages before it and writes its own under a fixed path, so a
+Every stage has its own script under `scripts/`, which reads the configuration and calls the
+`possible_futures` package under `src/`. Each stage reads the files of the stages before it and writes its own under a fixed path, so a
 rerun overwrites the previous one. After changing a stage's code or configuration, rerun every
 stage from that one on. Run every command from the repository root.
 
 ```sh
-uv run python -m pipelines.preprocess dataset=sepsis
-uv run python -m pipelines.train dataset=sepsis
-uv run python -m pipelines.generate dataset=sepsis
-uv run python -m pipelines.collapse dataset=sepsis
-uv run python -m pipelines.baselines dataset=sepsis
-uv run python -m pipelines.evaluate dataset=sepsis
+uv run python scripts/preprocess.py dataset=sepsis
+uv run python scripts/train.py dataset=sepsis
+uv run python scripts/generate.py dataset=sepsis
+uv run python scripts/collapse.py dataset=sepsis
+uv run python scripts/baselines.py dataset=sepsis
+uv run python scripts/evaluate.py dataset=sepsis
 ```
 
 Hydra composes the YAML files under `config/` and accepts overrides such as `device=cpu`.
@@ -102,10 +103,10 @@ cannot tell the two apart. The probabilities and the 20,000 cases are set in
 `config/dataset/synthetic.yaml`.
 
 ```sh
-uv run python -m pipelines.simulate
-uv run python -m pipelines.preprocess dataset=synthetic
-uv run python -m pipelines.baselines dataset=synthetic
-uv run python -m pipelines.evaluate dataset=synthetic
+uv run python scripts/simulate.py
+uv run python scripts/preprocess.py dataset=synthetic
+uv run python scripts/baselines.py dataset=synthetic
+uv run python scripts/evaluate.py dataset=synthetic
 ```
 
 `simulate` writes `data/synthetic/original.csv`, which the other stages read like any original
@@ -121,7 +122,7 @@ log. On a log whose configuration holds its process, `baselines` writes four mor
 ## Tables
 
 ```sh
-uv run python -m pipelines.tables
+uv run python scripts/tables.py
 ```
 
 `tables` writes the three tables of the paper to `outputs/tables/`:

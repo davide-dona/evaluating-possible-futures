@@ -2,10 +2,10 @@ import hydra
 import numpy as np
 from omegaconf import DictConfig
 
-from pipelines.helpers.console import banner, step
-from pipelines.helpers.paths import original_log
-from src.logs.keys import CASE_KEY
-from src.simulation.processes import SyntheticProcess
+from possible_futures.logs.keys import CASE_KEY
+from possible_futures.runs.console import banner, step
+from possible_futures.runs.paths import original_log
+from possible_futures.simulation.processes import SyntheticProcess
 
 
 def run(data: DictConfig) -> None:
