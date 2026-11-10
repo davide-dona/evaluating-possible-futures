@@ -1,4 +1,4 @@
 # @package _global_
 training:
-  lr: 4.0e-6
-  batch_size: 1024
+  lr: 1.0e-5
+  batch_size: 128
