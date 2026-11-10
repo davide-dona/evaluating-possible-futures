@@ -20,11 +20,12 @@ def exact(suffixes: Sequence[str]) -> np.ndarray:
 
 
 def bigram(suffixes: Sequence[str]) -> np.ndarray:
-    """`[N, N]`, the multiset Jaccard distance between the bigrams of the suffixes, each padded
-    at both ends, so a suffix of `n` activities holds `n + 1` bigrams and never none.
+    """`[N, N]`, the normalised 2-gram distance of Chapela-Campa et al. (2025) between the
+    suffixes, each padded with one symbol at both ends, so a suffix of `n` activities holds
+    `n + 1` bigrams and never none.
 
-    It is `1 - |A n B| / |A u B|` on multisets, computed from the L1 distance between bigram
-    counts as `2 L1 / (|A| + |B| + L1)`.
+    It is the L1 distance between bigram counts divided by the total count of both suffixes,
+    `L1 / (|A| + |B|)`, so it lies in `[0, 1]` and is 1 between suffixes sharing no bigram.
     """
     codes = [np.array([_START, *map(ord, suffix), _END], dtype=np.int64) for suffix in suffixes]
     width = max(int(code.max()) for code in codes) + 1
@@ -35,7 +36,7 @@ def bigram(suffixes: Sequence[str]) -> np.ndarray:
     np.add.at(counts, (rows, columns), 1.0)
     l1 = np.abs(counts[:, None, :] - counts[None, :, :]).sum(axis=-1)  # [N, N, V] -> [N, N]
     sizes = counts.sum(axis=1)
-    return 2.0 * l1 / (sizes[:, None] + sizes[None, :] + l1)
+    return l1 / (sizes[:, None] + sizes[None, :])
 
 
 def damerau_levenshtein(suffixes: Sequence[str]) -> np.ndarray:
