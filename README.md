@@ -133,8 +133,9 @@ uv run python scripts/tables.py
 | `synthetic.tex` | The sampled and greedy decodings of the true process and of the Markov chain on the synthetic log | As `real.tex` |
 | `properties.tex` | Every preprocessed log | Cases, events, variants, activities, and case length and duration |
 
-The headers use the metric macros of the paper's preamble, and the rows use these macros, which
-the preamble must define: `\Sampled`, `\Medoid`, `\Unconditional`, `\OracleSampled`,
+The tables need the `booktabs`, `multirow`, `dcolumn` and `siunitx` packages. The headers use
+the metric macros of the paper's preamble, and the rows use these macros, which the preamble
+must define: `\Sampled`, `\Medoid`, `\Unconditional`, `\OracleSampled`,
 `\OracleGreedy`, `\MarkovSampled` and `\MarkovGreedy`. The logs and the decodings of every
 table, their printed names, and the order of the rows are set in `config/tables.yaml`.
 

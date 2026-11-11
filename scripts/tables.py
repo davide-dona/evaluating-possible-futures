@@ -86,16 +86,22 @@ def properties_table(logs: Mapping[str, pd.DataFrame]) -> str:
         variants = log.groupby(CASE_KEY, sort=False)[ACTIVITY_KEY].agg(tuple).nunique()
         cells = [
             name,
-            str(len(lengths)),
-            str(len(log)),
-            str(variants),
-            str(log[ACTIVITY_KEY].nunique()),
+            grouped_digits(len(lengths)),
+            grouped_digits(len(log)),
+            grouped_digits(variants),
+            grouped_digits(log[ACTIVITY_KEY].nunique()),
             f'{lengths.mean():.1f}+{lengths.std():.1f}',
             f'{durations.mean():.2f}+{durations.std():.2f}',
         ]
         lines.append(' & '.join(cells) + r' \\')
     lines += [r'\bottomrule', r'\end{tabular}', '']
     return '\n'.join(lines)
+
+
+def grouped_digits(count: int) -> str:
+    """A count with its digits grouped in thousands by commas, braced so that math mode adds no
+    space after them."""
+    return f'{count:,}'.replace(',', '{,}')
 
 
 def scores_table(means: Mapping[str, pd.DataFrame], decodings: Mapping[str, str]) -> str:
@@ -111,26 +117,28 @@ def scores_table(means: Mapping[str, pd.DataFrame], decodings: Mapping[str, str]
         The table, to `\\input` inside a `table` environment.
     """
     grouped = len(means) > 1
-    headers = [*(['Dataset'] if grouped else []), 'Decoding', *(h for h, _ in METRICS.values())]
-    columns = 'l' * (len(headers) - len(METRICS)) + 'c' * len(METRICS)
+    labels = [*(['Event log'] if grouped else []), 'Decoding']
+    headers = [*labels, *(f'{{{h}}}' for h, _ in METRICS.values())]
+    score = f'S[table-format=1.{DECIMALS}, detect-weight, mode=text]'
+    columns = 'l' * len(labels) + score * len(METRICS)
     lines = [
         rf'\begin{{tabular}}{{@{{}}{columns}@{{}}}}',
         r'\toprule',
         ' & '.join(headers) + r' \\',
     ]
-    for dataset, scores in means.items():
+    for index, (dataset, scores) in enumerate(means.items()):
         rows = scores.loc[[decoding for decoding in decodings if decoding in scores.index]]
         cells = rows[list(METRICS)].round(DECIMALS)
         best = {
             metric: cells[metric].max() if higher else cells[metric].min()
             for metric, (_, higher) in METRICS.items()
         }
-        lines.append(r'\midrule')
+        lines.append(r'\addlinespace' if index else r'\midrule')
         if grouped:
             lines.append(rf'\multirow{{{len(cells)}}}{{*}}{{{dataset}}}')
         for decoding, values in cells.iterrows():
             numbers = [
-                rf'\textbf{{{value:.{DECIMALS}f}}}'
+                rf'\bfseries {value:.{DECIMALS}f}'
                 if value == best[metric]
                 else f'{value:.{DECIMALS}f}'
                 for metric, value in values.items()
