@@ -36,10 +36,9 @@ def run(config: DictConfig) -> None:
             'output': output,
         },
     )
-    with step('Encoding the train and validation splits'):
+    with step('Encoding the train split'):
         vocabulary = Vocabulary.load(vocabulary_file(name))
         train_log = EncodedLog.from_split(read_split(split_file(name, Split.TRAIN)), vocabulary)
-        validation_log = EncodedLog.from_split(read_split(split_file(name, Split.VAL)), vocabulary)
 
     model = UEDLSTM(
         vocabulary_size=vocabulary.size,
@@ -58,15 +57,13 @@ def run(config: DictConfig) -> None:
             file.flush()
             print(
                 f'epoch {record.epoch:>3}  teacher forcing {record.teacher_forcing:.3f}  '
-                f'train {record.train_loss:.4f}  validation {record.validation_loss:.4f}  '
-                f'{duration(record.seconds)}',
+                f'train {record.train_loss:.4f}  {duration(record.seconds)}',
                 flush=True,
             )
 
         train(
             model,
             train_log=train_log,
-            validation_log=validation_log,
             config=training,
             device=device,
             rng=rng,

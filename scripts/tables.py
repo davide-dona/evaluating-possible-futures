@@ -50,7 +50,7 @@ def run(config: DictConfig) -> None:
 
 
 def read_log(dataset: str) -> pd.DataFrame:
-    """The preprocessed log of a dataset, its three splits together."""
+    """The preprocessed log of a dataset, its two splits together."""
     splits = [
         pd.read_csv(
             split_file(dataset, split),

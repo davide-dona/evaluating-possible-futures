@@ -6,18 +6,17 @@ import numpy as np
 import torch
 from omegaconf import DictConfig
 
-from possible_futures.datasets.dataset import EncodedLog, training_batches, validation_batches
+from possible_futures.datasets.dataset import EncodedLog, training_batches
 from possible_futures.models.u_ed_lstm import UEDLSTM
 
 
 @dataclass(frozen=True)
 class EpochRecord:
-    """The losses of one epoch: cross-entropy per prefix, without the weight penalty."""
+    """The loss of one epoch: cross-entropy per prefix, without the weight penalty."""
 
     epoch: int
     teacher_forcing: float
     train_loss: float
-    validation_loss: float
     seconds: float
 
 
@@ -31,7 +30,6 @@ def train(
     model: UEDLSTM,
     *,
     train_log: EncodedLog,
-    validation_log: EncodedLog,
     config: DictConfig,
     device: torch.device,
     rng: np.random.Generator,
@@ -42,8 +40,6 @@ def train(
     Args:
         model: The model, on `device`.
         train_log: The train split.
-        validation_log: The validation split, whose free-running loss is reported every epoch
-            and selects nothing.
         config: The `training` section.
         device: Where batches go.
         rng: Shuffles the training cuts.
@@ -82,27 +78,6 @@ def train(
                 epoch=epoch + 1,
                 teacher_forcing=ratio,
                 train_loss=total / rows,
-                validation_loss=validation_loss(
-                    model,
-                    validation_log,
-                    batch_size=config.batch_size,
-                    window=config.window,
-                    device=device,
-                ),
                 seconds=time.perf_counter() - started,
             )
         )
-
-
-@torch.no_grad()
-def validation_loss(
-    model: UEDLSTM, log: EncodedLog, *, batch_size: int, window: int, device: torch.device
-) -> float:
-    """The free-running cross-entropy per prefix over every cut of a split, dropout active."""
-    total, rows = 0.0, 0
-    for batch in validation_batches(log, batch_size=batch_size, window=window):
-        batch = batch.to(device)
-        means, log_variances = model(batch, teacher_forcing=0.0)
-        total += model.loss(means, log_variances, batch.targets).item() * len(batch.targets)
-        rows += len(batch.targets)
-    return total / rows

@@ -59,7 +59,7 @@ resolved configuration in `.hydra/config.yaml` inside its output directory.
 | Stage | Writes | What it does |
 | --- | --- | --- |
 | preprocess | `data/<dataset>/processed/` | Drops the cases above the 98.5th percentile of length or the 95th percentile of duration, then the cases starting less than that duration before the end of the log. Splits the rest out of time and fits the activity vocabulary on train. |
-| train | `outputs/<dataset>/train/` | Trains for 100 epochs and keeps the final weights, `model.pt`, with the losses of every epoch in `log.csv`. |
+| train | `outputs/<dataset>/train/` | Trains for 100 epochs and keeps the final weights, `model.pt`, with the loss of every epoch in `log.csv`. |
 | generate | `outputs/<dataset>/generate/` | Writes `sampled.parquet`, one row per drawn suffix of every test prefix. |
 | collapse | `outputs/<dataset>/collapse/` | Writes `medoid.parquet`, the medoid of the sampled suffixes of every test prefix. |
 | baselines | `outputs/<dataset>/baselines/` | Writes `unconditional.parquet`, the suffixes drawn from train for every test prefix. It needs no model. |
@@ -82,7 +82,7 @@ The out-of-time split puts every case still running at the start of the case at 
 percentile of case starts into test. A test case that started before that moment is scored only
 on the prefixes that reach past it, since training may have seen its earlier events.
 
-An activity of val or test that train does not hold is encoded as `<UNK>`, which is also an
+An activity of test that train does not hold is encoded as `<UNK>`, which is also an
 output class of the model, and is scored as `<UNK>`. A forecast can therefore predict that an
 activity unseen in train comes next, but not which one.
 

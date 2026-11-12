@@ -55,10 +55,8 @@ def sort_log(log: pd.DataFrame) -> pd.DataFrame:
     return log.drop(columns='_case_rank').reset_index(drop=True)
 
 
-def out_of_time_split(
-    log: pd.DataFrame, *, val_frac: float, test_frac: float, seed: int
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Split a log out of time into train and test, and draw validation at random from train.
+def out_of_time_split(log: pd.DataFrame, *, test_frac: float) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split a log out of time into train and test.
 
     The separation is the start of the case at the `1 - test_frac` quantile of case starts.
     Train keeps the cases finished before it, test the cases still running at it. A test case
@@ -67,12 +65,10 @@ def out_of_time_split(
 
     Args:
         log: The filtered log, sorted by case start and then by timestamp.
-        val_frac: Fraction of all cases drawn from the train cases for validation.
         test_frac: Fraction of all cases the separation time is placed at.
-        seed: Seed of the validation draw.
 
     Returns:
-        `(train, val, test)`, row subsets of `log` with `MIN_PREFIX_KEY` added: 1 everywhere
+        `(train, test)`, row subsets of `log` with `MIN_PREFIX_KEY` added: 1 everywhere
         except on the crossing test cases.
     """
     log = log.assign(**{MIN_PREFIX_KEY: 1})
@@ -90,15 +86,7 @@ def out_of_time_split(
     test = _bound_crossing_prefixes(
         log[log[CASE_KEY].isin(test_cases)], separation_ts=separation_ts, crossing=crossing
     )
-
-    # The candidates are taken in log order, so the draw depends on the seed alone.
-    val_share = val_frac / (1 - test_frac)
-    train_cases = train[CASE_KEY].unique()
-    rng = np.random.default_rng(seed)
-    val_cases = rng.choice(train_cases, size=int(len(train_cases) * val_share), replace=False)
-    val = train[train[CASE_KEY].isin(val_cases)]
-    train = train[~train[CASE_KEY].isin(val_cases)]
-    return train, val, test
+    return train, test
 
 
 def _bound_crossing_prefixes(
