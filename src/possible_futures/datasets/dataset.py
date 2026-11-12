@@ -126,24 +126,3 @@ def training_batches(
             prefixes=log.prefixes(selected),
             targets=log.targets(selected, window=window),
         )
-
-
-def validation_batches(log: EncodedLog, *, batch_size: int, window: int) -> Iterator[Batch]:
-    """Every cut of a split once, in prefix length order."""
-    cuts = log.cuts(from_min_prefix=False)
-    order = np.argsort(cuts.length, kind='stable')
-    for first in range(0, len(order), batch_size):
-        selected = cuts.select(order[first : first + batch_size])
-        yield Batch(
-            prefixes=log.prefixes(selected),
-            targets=log.targets(selected, window=window),
-        )
-
-
-def test_prefix_batches(log: EncodedLog, *, batch_size: int) -> Iterator[tuple[Cuts, Prefixes]]:
-    """Every scored test prefix once, from each case's `min_prefix`, in prefix length order."""
-    cuts = log.cuts(from_min_prefix=True)
-    order = np.argsort(cuts.length, kind='stable')
-    for first in range(0, len(order), batch_size):
-        selected = cuts.select(order[first : first + batch_size])
-        yield selected, log.prefixes(selected)

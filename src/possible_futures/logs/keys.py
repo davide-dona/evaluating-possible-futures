@@ -2,10 +2,9 @@ from enum import StrEnum
 
 
 class Split(StrEnum):
-    """The three splits preprocessing cuts a log into, named as their files on disk are."""
+    """The two splits preprocessing cuts a log into, named as their files on disk are."""
 
     TRAIN = 'train'
-    VAL = 'val'
     TEST = 'test'
 
 

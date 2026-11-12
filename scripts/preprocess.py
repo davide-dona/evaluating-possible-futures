@@ -28,9 +28,7 @@ def run(data: DictConfig) -> None:
         f'Preprocessing "{data.name}"',
         {
             'original log': original_log(data.name),
-            'split': f'{1 - data.val_split - data.test_split:.0%} train, '
-            f'{data.val_split:.0%} val, {data.test_split:.0%} test, '
-            'test out of time, val at random',
+            'split': f'{1 - data.test_split:.0%} train, {data.test_split:.0%} test, out of time',
             'splits': split_file(data.name, Split.TRAIN).parent,
         },
     )
@@ -56,24 +54,17 @@ def run(data: DictConfig) -> None:
         log = kept
 
     with step('Sorting and splitting the log out of time'):
-        train, val, test = out_of_time_split(
-            sort_log(log),
-            val_frac=data.val_split,
-            test_frac=data.test_split,
-            seed=data.split_seed,
-        )
+        train, test = out_of_time_split(sort_log(log), test_frac=data.test_split)
 
     with step('Writing the splits and the vocabulary'):
-        for split, rows in ((Split.TRAIN, train), (Split.VAL, val), (Split.TEST, test)):
+        for split, rows in ((Split.TRAIN, train), (Split.TEST, test)):
             write_split(rows, split_file(data.name, split))
         # Write vocabulary fitted on the train split, which is used for encoding the splits for training
         vocabulary = Vocabulary.fit(train, max_case_length=max_length)
         vocabulary.save(vocabulary_file(data.name))
 
     # Report the statistics of the splits.
-    summary = pd.DataFrame(
-        {name: _describe(rows) for name, rows in (('train', train), ('val', val), ('test', test))}
-    ).T
+    summary = pd.DataFrame({'train': _describe(train), 'test': _describe(test)}).T
     print(
         f'\nPreprocessed "{data.name}": {len(vocabulary.activities)} train activities, cases of '
         f'at most {max_length} events and {max_duration_days:,.1f} days\n'
