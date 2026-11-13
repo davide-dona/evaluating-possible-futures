@@ -161,7 +161,7 @@ as the medoid, is scored on the first term alone. The three distances are:
 | Distance | Between two suffixes |
 | --- | --- |
 | exact | 0 if they are equal, 1 otherwise |
-| bigram | The L1 distance between their bigram counts divided by the total count of both, each suffix padded at both ends |
+| bigram | Half the L1 distance between their relative bigram frequencies, the share each bigram takes of a suffix padded at both ends |
 | dl | The Damerau-Levenshtein distance divided by the length of the longer suffix |
 
 Mean DLS is one minus the first term of $\mathrm{ES}_{\mathrm{dl}}$, so both use the same distance
