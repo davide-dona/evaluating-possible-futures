@@ -7,5 +7,5 @@ data:
   separator: ','
   test_split: 0.2
   max_case_length_percentile: 98.5
-  # Also how long before the end of the log a kept case must start.
+  # Also the length of the debiased window at the end of the log.
   max_case_duration_percentile: 95

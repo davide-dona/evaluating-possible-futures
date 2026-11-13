@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from possible_futures.logs.keys import CASE_KEY, MIN_PREFIX_KEY, TIMESTAMP_KEY
+from possible_futures.logs.keys import CASE_KEY, MAX_PREFIX_KEY, MIN_PREFIX_KEY, TIMESTAMP_KEY
 
 
 def case_durations(log: pd.DataFrame) -> pd.Series:
@@ -27,16 +27,28 @@ def drop_outlier_cases(
     return log[log[CASE_KEY].isin(kept.index[kept])]
 
 
-def drop_cases_starting_late(log: pd.DataFrame, *, min_observed_days: float) -> pd.DataFrame:
-    """Keep the cases starting at least `min_observed_days` before the last event of the log.
+def debias_log_end(log: pd.DataFrame, *, window_days: float) -> pd.DataFrame:
+    """Drop every prefix ending in the last `window_days` of a log, the end-of-dataset debiasing
+    of Weytjens and De Weerdt (2021).
 
     A log is a snapshot: a case still running when it was extracted ends at its last recorded
-    event, which would then be scored as the true end of the trace. Selecting on start time
-    rather than on how a case ends keeps the selection independent of the scored suffixes.
+    event, which would then be scored as the true end of the trace. With `window_days` the
+    longest a case lasts, only a case starting in the window can be one of them. Without those
+    cases the window holds just the late events of older cases, so the prefixes of the kept
+    cases that end in it go too. Selecting cases on start time rather than on how they end
+    keeps the selection independent of the scored suffixes.
+
+    Returns:
+        The cases starting before the window, with `MAX_PREFIX_KEY` added: the highest cut
+        that ends before the window and leaves a non-empty suffix.
     """
-    cutoff = log[TIMESTAMP_KEY].max() - pd.Timedelta(days=min_observed_days)
-    starts = log.groupby(CASE_KEY)[TIMESTAMP_KEY].min()
-    return log[log[CASE_KEY].map(starts) <= cutoff]
+    window_start = log[TIMESTAMP_KEY].max() - pd.Timedelta(days=window_days)
+    # A cut of k ends at the k-th event in time order, so the events before the window count
+    # the cuts ending before it.
+    before = (log[TIMESTAMP_KEY] <= window_start).groupby(log[CASE_KEY]).transform('sum')
+    length = log.groupby(CASE_KEY)[CASE_KEY].transform('size')
+    log = log.assign(**{MAX_PREFIX_KEY: np.minimum(before, length - 1)})
+    return log[before > 0]
 
 
 def sort_log(log: pd.DataFrame) -> pd.DataFrame:
@@ -64,7 +76,7 @@ def out_of_time_split(log: pd.DataFrame, *, test_frac: float) -> tuple[pd.DataFr
     its earlier prefixes would be predicted with training data from their future.
 
     Args:
-        log: The filtered log, sorted by case start and then by timestamp.
+        log: The debiased log, sorted by case start and then by timestamp.
         test_frac: Fraction of all cases the separation time is placed at.
 
     Returns:

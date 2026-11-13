@@ -42,7 +42,7 @@ def write_baseline(
     draws = num_samples if sampled else 1
     max_steps = vocabulary.max_case_length
     index = {name: i for i, name in enumerate(vocabulary.names)}
-    cuts = log.cuts(from_min_prefix=True)
+    cuts = log.cuts()
     activities = np.full((len(cuts.case) * draws, max_steps), PAD, dtype=np.int64)
     truncated = np.zeros(len(cuts.case) * draws, dtype=bool)
     row = 0
@@ -96,8 +96,8 @@ def write_unconditional(
     Returns:
         The number of prefixes written.
     """
-    sources = train.cuts(from_min_prefix=False)
-    cuts = log.cuts(from_min_prefix=True)
+    sources = train.cuts()
+    cuts = log.cuts()
     names = pa.array(vocabulary.names, type=pa.string())
     batch_size = max(1, _ROWS_PER_TABLE // num_samples)
     path.parent.mkdir(parents=True, exist_ok=True)

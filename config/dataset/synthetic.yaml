@@ -8,7 +8,7 @@ data:
   test_split: 0.2
   # Every case holds 5 events and lasts 4 hours, so no case is an outlier.
   max_case_length_percentile: 100
-  # Also how long before the end of the log a kept case must start.
+  # Also the length of the debiased window at the end of the log.
   max_case_duration_percentile: 100
   num_cases: 20000
   simulation_seed: 42

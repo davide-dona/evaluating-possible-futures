@@ -5,11 +5,17 @@ from omegaconf import DictConfig
 
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.logs.io import read_original_log, write_split
-from possible_futures.logs.keys import ACTIVITY_KEY, CASE_KEY, MIN_PREFIX_KEY, Split
+from possible_futures.logs.keys import (
+    ACTIVITY_KEY,
+    CASE_KEY,
+    MAX_PREFIX_KEY,
+    MIN_PREFIX_KEY,
+    Split,
+)
 from possible_futures.logs.preprocessing import (
     case_durations,
     case_lengths,
-    drop_cases_starting_late,
+    debias_log_end,
     drop_outlier_cases,
     out_of_time_split,
     sort_log,
@@ -47,9 +53,9 @@ def run(data: DictConfig) -> None:
         kept = drop_outlier_cases(log, max_duration_days=max_duration_days, max_length=max_length)
         _report_dropped(before=log, after=kept)
         log = kept
-    # Drop the cases starting too close to the end of the log.
-    with step(f'Dropping the cases starting within {max_duration_days:,.1f} days of the log end'):
-        kept = drop_cases_starting_late(log, min_observed_days=max_duration_days)
+    # Drop the prefixes ending too close to the end of the log.
+    with step(f'Debiasing the last {max_duration_days:,.1f} days of the log'):
+        kept = debias_log_end(log, window_days=max_duration_days)
         _report_dropped(before=log, after=kept)
         log = kept
 
@@ -69,7 +75,7 @@ def run(data: DictConfig) -> None:
         f'\nPreprocessed "{data.name}": {len(vocabulary.activities)} train activities, cases of '
         f'at most {max_length} events and {max_duration_days:,.1f} days\n'
         f'{summary.to_string()}\n'
-        'Prefixes are the cuts leaving a non-empty suffix; on test, only the scored ones.',
+        'Prefixes are the cuts between the lowest and the highest cut of every case.',
         flush=True,
     )
 
@@ -78,8 +84,8 @@ def _describe(split: pd.DataFrame) -> dict[str, str]:
     """The size of a split and the shape of its cases, formatted for printing."""
     traces = split.groupby(CASE_KEY, sort=False)[ACTIVITY_KEY].agg(tuple)
     lengths = traces.map(len)
-    lowest = split.groupby(CASE_KEY, sort=False)[MIN_PREFIX_KEY].first()
-    prefixes = (lengths - lowest).clip(lower=0).sum()
+    bounds = split.groupby(CASE_KEY, sort=False)[[MIN_PREFIX_KEY, MAX_PREFIX_KEY]].first()
+    prefixes = (bounds[MAX_PREFIX_KEY] - bounds[MIN_PREFIX_KEY] + 1).clip(lower=0).sum()
     return {
         'cases': f'{len(traces):,}',
         'events': f'{len(split):,}',
