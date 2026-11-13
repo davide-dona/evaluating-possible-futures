@@ -58,7 +58,7 @@ resolved configuration in `.hydra/config.yaml` inside its output directory.
 
 | Stage | Writes | What it does |
 | --- | --- | --- |
-| preprocess | `data/<dataset>/processed/` | Drops the cases above the 98.5th percentile of length or the 95th percentile of duration, then the cases starting less than that duration before the end of the log. Splits the rest out of time and fits the activity vocabulary on train. |
+| preprocess | `data/<dataset>/processed/` | Drops the cases above the 98.5th percentile of length or the 95th percentile of duration, then every prefix ending less than that duration before the end of the log. Splits the rest out of time and fits the activity vocabulary on train. |
 | train | `outputs/<dataset>/train/` | Trains for 100 epochs and keeps the final weights, `model.pt`, with the loss of every epoch in `log.csv`. |
 | generate | `outputs/<dataset>/generate/` | Writes `sampled.parquet`, one row per drawn suffix of every test prefix. |
 | collapse | `outputs/<dataset>/collapse/` | Writes `medoid.parquet`, the medoid of the sampled suffixes of every test prefix. |
@@ -77,6 +77,11 @@ suffix weighted by how often it was drawn.
 
 The unconditional forecast draws uniformly from the prefix-suffix pairs of train, each prefix of
 train counting once, as each test prefix does in a mean score.
+
+The preprocessing follows Weytjens and De Weerdt, *Creating Unbiased Public Benchmark Datasets
+with Data Leakage Prevention for Predictive Process Monitoring*. The end of a log is debiased
+over a window as long as the longest kept case: a case starting in the window is dropped, and a
+case running into it is scored only on the prefixes that end before it.
 
 The out-of-time split puts every case still running at the start of the case at the 80th
 percentile of case starts into test. A test case that started before that moment is scored only

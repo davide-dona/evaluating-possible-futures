@@ -3,7 +3,13 @@ from pathlib import Path
 import pandas as pd
 from omegaconf import DictConfig
 
-from possible_futures.logs.keys import ACTIVITY_KEY, CASE_KEY, MIN_PREFIX_KEY, TIMESTAMP_KEY
+from possible_futures.logs.keys import (
+    ACTIVITY_KEY,
+    CASE_KEY,
+    MAX_PREFIX_KEY,
+    MIN_PREFIX_KEY,
+    TIMESTAMP_KEY,
+)
 
 
 def read_original_log(path: Path, data_config: DictConfig) -> pd.DataFrame:
@@ -39,10 +45,10 @@ def write_split(split: pd.DataFrame, path: Path) -> None:
 
 
 def read_split(path: Path) -> pd.DataFrame:
-    """Read a split written by `write_split`: case, activity, and lowest cut of every event, in
-    log order."""
+    """Read a split written by `write_split`: case, activity, and lowest and highest cut of every
+    event, in log order."""
     return pd.read_csv(
         path,
-        usecols=[CASE_KEY, ACTIVITY_KEY, MIN_PREFIX_KEY],
+        usecols=[CASE_KEY, ACTIVITY_KEY, MIN_PREFIX_KEY, MAX_PREFIX_KEY],
         dtype={CASE_KEY: str, ACTIVITY_KEY: str},
     )
