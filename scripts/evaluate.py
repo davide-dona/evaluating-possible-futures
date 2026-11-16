@@ -5,12 +5,13 @@ from omegaconf import DictConfig
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.evaluation.scores import score_generations, summary
 from possible_futures.logs.io import read_split
-from possible_futures.logs.keys import ACTIVITY_KEY, Split
+from possible_futures.logs.keys import ACTIVITY_KEY
 from possible_futures.runs.console import banner, step
-from possible_futures.runs.paths import split_file, stage_dir, vocabulary_file
+from possible_futures.runs.paths import Split, scores_file, split_file, stage_dir, vocabulary_file
 
 
-def run(config: DictConfig) -> None:
+@hydra.main(version_base='1.3', config_path='../config', config_name='evaluate')
+def main(config: DictConfig) -> None:
     """Score the suffixes of every test prefix in each file of the generate, collapse, and
     baselines stages, and print the means."""
     name = config.data.name
@@ -19,7 +20,7 @@ def run(config: DictConfig) -> None:
         for stage in ('generate', 'collapse', 'baselines')
         for path in sorted(stage_dir(name, stage).glob('*.parquet'))
     ]
-    output = stage_dir(name, 'evaluate') / 'scores.parquet'
+    output = scores_file(name)
     banner(
         f'Scoring the suffixes of "{name}"',
         {
@@ -40,11 +41,6 @@ def run(config: DictConfig) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     scores.to_parquet(output, index=False)
     print(f'Wrote {len(scores):,} rows to {output}\n\n{summary(scores).round(4).to_string()}')
-
-
-@hydra.main(version_base='1.3', config_path='../config', config_name='evaluate')
-def main(config: DictConfig) -> None:
-    run(config)
 
 
 if __name__ == '__main__':

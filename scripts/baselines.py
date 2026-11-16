@@ -5,14 +5,21 @@ from omegaconf import DictConfig
 from possible_futures.datasets.dataset import EncodedLog
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.inference.baselines import write_baseline, write_unconditional
-from possible_futures.logs.io import read_split
-from possible_futures.logs.keys import Split
+from possible_futures.inference.markov import MarkovChain
+from possible_futures.logs.io import read_max_case_length, read_split
 from possible_futures.runs.console import banner, step
-from possible_futures.runs.paths import split_file, stage_dir, vocabulary_file
-from possible_futures.simulation.processes import MarkovChain, SyntheticProcess
+from possible_futures.runs.paths import (
+    Split,
+    max_case_length_file,
+    split_file,
+    stage_dir,
+    vocabulary_file,
+)
+from possible_futures.simulation.processes import SyntheticProcess
 
 
-def run(config: DictConfig) -> None:
+@hydra.main(version_base='1.3', config_path='../config', config_name='baselines')
+def main(config: DictConfig) -> None:
     """Write the forecasts that need no trained model.
 
     Every dataset gets the unconditional forecast, drawn from the train split whatever the
@@ -44,6 +51,7 @@ def run(config: DictConfig) -> None:
     if simulated:
         process = SyntheticProcess(**config.data.process)
         chain = MarkovChain.fit(train)
+        max_steps = read_max_case_length(max_case_length_file(name))
         baselines = (
             ('oracle_sampled', process, True),
             ('oracle_greedy', process, False),
@@ -60,6 +68,7 @@ def run(config: DictConfig) -> None:
                     path=path,
                     sampled=sampled,
                     num_samples=config.num_samples,
+                    max_steps=max_steps,
                     rng=rng,
                 )
                 print(f'  {prefixes:,} prefixes', flush=True)
@@ -75,11 +84,6 @@ def run(config: DictConfig) -> None:
             rng=rng,
         )
         print(f'  {prefixes:,} prefixes', flush=True)
-
-
-@hydra.main(version_base='1.3', config_path='../config', config_name='baselines')
-def main(config: DictConfig) -> None:
-    run(config)
 
 
 if __name__ == '__main__':

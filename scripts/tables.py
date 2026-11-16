@@ -1,27 +1,16 @@
-from collections.abc import Mapping
-
 import hydra
 import pandas as pd
 from omegaconf import DictConfig
 
 from possible_futures.evaluation.scores import summary
-from possible_futures.logs.keys import ACTIVITY_KEY, CASE_KEY, TIMESTAMP_KEY, Split
-from possible_futures.logs.preprocessing import case_durations, case_lengths
+from possible_futures.logs.io import read_split
 from possible_futures.runs.console import banner, step
-from possible_futures.runs.paths import OUTPUTS, split_file, stage_dir
-
-# The columns of `summary` in the order printed, each with its header in the paper's macros and
-# whether a higher mean is better.
-METRICS = {
-    'DLS': (r'$\meanDLS$~$\uparrow$', True),
-    'ES dl': (r'\DL~$\downarrow$', False),
-    'ES exact': (r'\exact~$\downarrow$', False),
-    'ES bigram': (r'\ngram[2]~$\downarrow$', False),
-}
-DECIMALS = 3
+from possible_futures.runs.paths import OUTPUTS, Split, scores_file, split_file
+from possible_futures.tables import properties_table, scores_table
 
 
-def run(config: DictConfig) -> None:
+@hydra.main(version_base='1.3', config_path='../config', config_name='tables')
+def main(config: DictConfig) -> None:
     """Write the LaTeX tables of the paper: one per entry of `config.scores`, holding the mean
     scores of its decodings on its datasets, and `properties.tex`, describing the preprocessed
     logs."""
@@ -36,122 +25,20 @@ def run(config: DictConfig) -> None:
         path = output / f'{name}.tex'
         with step(f'Writing {path}'):
             means = {
-                config.datasets[dataset]: summary(
-                    pd.read_parquet(stage_dir(dataset, 'evaluate') / 'scores.parquet')
-                )
+                config.datasets[dataset]: summary(pd.read_parquet(scores_file(dataset)))
                 for dataset in table.datasets
             }
             decodings = {decoding: config.decodings[decoding] for decoding in table.decodings}
             path.write_text(scores_table(means, decodings))
     path = output / 'properties.tex'
     with step(f'Writing {path}'):
-        logs = {config.datasets[dataset]: read_log(dataset) for dataset in config.properties}
-        path.write_text(properties_table(logs))
-
-
-def read_log(dataset: str) -> pd.DataFrame:
-    """The preprocessed log of a dataset, its two splits together."""
-    splits = [
-        pd.read_csv(
-            split_file(dataset, split),
-            usecols=[CASE_KEY, ACTIVITY_KEY, TIMESTAMP_KEY],
-            dtype={CASE_KEY: str, ACTIVITY_KEY: str},
-        )
-        for split in Split
-    ]
-    log = pd.concat(splits, ignore_index=True)
-    log[TIMESTAMP_KEY] = pd.to_datetime(log[TIMESTAMP_KEY], format='mixed')
-    return log
-
-
-def properties_table(logs: Mapping[str, pd.DataFrame]) -> str:
-    """A booktabs `tabular` describing every log: its cases, events, variants and activities,
-    and the mean and standard deviation of its case length in events and duration in days.
-
-    Args:
-        logs: The preprocessed logs, keyed by the name the table prints.
-
-    Returns:
-        The table, to `\\input` inside a `table` environment.
-    """
-    lines = [
-        r'\begin{tabular}{@{}lrrrrD{+}{\,\pm\,}{-1}D{+}{\,\pm\,}{-1}@{}}',
-        r'\toprule',
-        r'Event log & Cases & Events & Variants & Activities & \multicolumn{1}{c}{Case length}'
-        r' & \multicolumn{1}{c}{Case duration} \\',
-        r'\midrule',
-    ]
-    for name, log in logs.items():
-        lengths, durations = case_lengths(log), case_durations(log)
-        variants = log.groupby(CASE_KEY, sort=False)[ACTIVITY_KEY].agg(tuple).nunique()
-        cells = [
-            name,
-            grouped_digits(len(lengths)),
-            grouped_digits(len(log)),
-            grouped_digits(variants),
-            grouped_digits(log[ACTIVITY_KEY].nunique()),
-            f'{lengths.mean():.1f}+{lengths.std():.1f}',
-            f'{durations.mean():.2f}+{durations.std():.2f}',
-        ]
-        lines.append(' & '.join(cells) + r' \\')
-    lines += [r'\bottomrule', r'\end{tabular}', '']
-    return '\n'.join(lines)
-
-
-def grouped_digits(count: int) -> str:
-    """A count with its digits grouped in thousands by commas, braced so that math mode adds no
-    space after them."""
-    return f'{count:,}'.replace(',', '{,}')
-
-
-def scores_table(means: Mapping[str, pd.DataFrame], decodings: Mapping[str, str]) -> str:
-    """A booktabs `tabular` of the means of every dataset.
-
-    Args:
-        means: The `summary` of every dataset, keyed by the name the table prints. A table of a
-            single dataset has no dataset column.
-        decodings: The macro of every decoding, in the order of the rows. A decoding a dataset
-            was not scored on has no row.
-
-    Returns:
-        The table, to `\\input` inside a `table` environment.
-    """
-    grouped = len(means) > 1
-    labels = [*(['Event log'] if grouped else []), 'Decoding']
-    headers = [*labels, *(f'{{{h}}}' for h, _ in METRICS.values())]
-    score = f'S[table-format=1.{DECIMALS}, detect-weight, mode=text]'
-    columns = 'l' * len(labels) + score * len(METRICS)
-    lines = [
-        rf'\begin{{tabular}}{{@{{}}{columns}@{{}}}}',
-        r'\toprule',
-        ' & '.join(headers) + r' \\',
-    ]
-    for index, (dataset, scores) in enumerate(means.items()):
-        rows = scores.loc[[decoding for decoding in decodings if decoding in scores.index]]
-        cells = rows[list(METRICS)].round(DECIMALS)
-        best = {
-            metric: cells[metric].max() if higher else cells[metric].min()
-            for metric, (_, higher) in METRICS.items()
+        logs = {
+            config.datasets[dataset]: pd.concat(
+                [read_split(split_file(dataset, split)) for split in Split], ignore_index=True
+            )
+            for dataset in config.properties
         }
-        lines.append(r'\addlinespace' if index else r'\midrule')
-        if grouped:
-            lines.append(rf'\multirow{{{len(cells)}}}{{*}}{{{dataset}}}')
-        for decoding, values in cells.iterrows():
-            numbers = [
-                rf'\bfseries {value:.{DECIMALS}f}'
-                if value == best[metric]
-                else f'{value:.{DECIMALS}f}'
-                for metric, value in values.items()
-            ]
-            group = [''] if grouped else []
-            lines.append(' & '.join([*group, decodings[decoding], *numbers]) + r' \\')
-    lines += [r'\bottomrule', r'\end{tabular}', '']
-    return '\n'.join(lines)
-
-
-@hydra.main(version_base='1.3', config_path='../config', config_name='tables')
-def main(config: DictConfig) -> None:
-    run(config)
+        path.write_text(properties_table(logs))
 
 
 if __name__ == '__main__':

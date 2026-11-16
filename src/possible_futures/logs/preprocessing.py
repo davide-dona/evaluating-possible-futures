@@ -2,17 +2,7 @@ import numpy as np
 import pandas as pd
 
 from possible_futures.logs.keys import CASE_KEY, MAX_PREFIX_KEY, MIN_PREFIX_KEY, TIMESTAMP_KEY
-
-
-def case_durations(log: pd.DataFrame) -> pd.Series:
-    """The duration of every case in days, first event to last, indexed by case."""
-    edges = log.groupby(CASE_KEY)[TIMESTAMP_KEY].agg(['min', 'max'])
-    return (edges['max'] - edges['min']).dt.total_seconds() / 86_400.0
-
-
-def case_lengths(log: pd.DataFrame) -> pd.Series:
-    """The length of every case in events, indexed by case."""
-    return log.groupby(CASE_KEY).size()
+from possible_futures.logs.statistics import case_durations, case_lengths
 
 
 def drop_outlier_cases(

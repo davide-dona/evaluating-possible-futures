@@ -6,7 +6,11 @@ import pandas as pd
 import torch
 
 from possible_futures.evaluation.distances import DISTANCES
-from possible_futures.inference.generate import CASE_COLUMN, PREFIX_LENGTH_COLUMN, read_generations
+from possible_futures.inference.generations import (
+    CASE_COLUMN,
+    PREFIX_LENGTH_COLUMN,
+    read_generations,
+)
 from possible_futures.logs.keys import ACTIVITY_KEY, CASE_KEY
 
 
@@ -40,7 +44,7 @@ def score_generations(generations: Path, test: pd.DataFrame, *, workers: int) ->
     """Score every prefix of a generations file against its observed suffix.
 
     Args:
-        generations: A file in the `SCHEMA` of `possible_futures.inference.generate`.
+        generations: A file in the `SCHEMA` of `possible_futures.inference.generations`.
         test: The test split, read by `read_split`.
         workers: Processes scoring the prefixes in parallel.
 

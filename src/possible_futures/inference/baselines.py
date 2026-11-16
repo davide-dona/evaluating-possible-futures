@@ -6,7 +6,7 @@ import pyarrow.parquet as pq
 
 from possible_futures.datasets.dataset import EncodedLog
 from possible_futures.datasets.vocabulary import PAD, Vocabulary
-from possible_futures.inference.generate import SCHEMA, suffix_table
+from possible_futures.inference.generations import SCHEMA, suffix_table
 from possible_futures.simulation.processes import Process
 
 # The most draws held in memory at once while writing the unconditional forecast.
@@ -21,10 +21,11 @@ def write_baseline(
     path: Path,
     sampled: bool,
     num_samples: int,
+    max_steps: int,
     rng: np.random.Generator,
 ) -> int:
-    """Write the suffixes a known process draws for every scored test prefix, one row per draw,
-    in the format of `possible_futures.inference.generate.generate`.
+    """Write the suffixes a known process draws for every scored test prefix, in the `SCHEMA`
+    of `possible_futures.inference.generations`.
 
     Args:
         source: The process continuing every prefix.
@@ -34,13 +35,13 @@ def write_baseline(
         sampled: Whether to draw `num_samples` suffixes by `Process.sample_suffix`, or one
             by `Process.greedy_suffix`.
         num_samples: Draws per prefix when sampled.
+        max_steps: The most events a draw holds.
         rng: Source of the sampled draws.
 
     Returns:
         The number of prefixes written.
     """
     draws = num_samples if sampled else 1
-    max_steps = vocabulary.max_case_length
     index = {name: i for i, name in enumerate(vocabulary.names)}
     cuts = log.cuts()
     activities = np.full((len(cuts.case) * draws, max_steps), PAD, dtype=np.int64)
@@ -79,8 +80,8 @@ def write_unconditional(
     rng: np.random.Generator,
 ) -> int:
     """Write a forecast that ignores the prefix: for every scored test prefix, `num_samples`
-    suffixes drawn uniformly from the cuts of the train split, in the format of
-    `possible_futures.inference.generate.generate`.
+    suffixes drawn uniformly from the cuts of the train split, in the `SCHEMA` of
+    `possible_futures.inference.generations`.
 
     Every prefix of train counts once, as every prefix of test does in a mean score, so the
     draws follow the suffix distribution of train over all its prefixes.

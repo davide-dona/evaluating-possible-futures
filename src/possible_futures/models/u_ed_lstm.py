@@ -7,12 +7,12 @@ from torch import nn
 
 from possible_futures.datasets.dataset import Batch, Prefixes
 from possible_futures.datasets.vocabulary import EOS, PAD, UNK
-from possible_futures.models.lstm import GateDropoutLSTMCell, GateMasks, LSTMState
+from possible_futures.models.lstm import GateDropoutLSTM, GateMasks, LSTMState
 
 
-def embedding_dim(num_activities: int) -> int:
-    """The width of the activity embeddings."""
-    return min(600, round(1.6 * (num_activities + 2) ** 0.56))
+def embedding_dim(num_classes: int) -> int:
+    """The width of the embeddings of `num_classes` classes."""
+    return min(600, round(1.6 * num_classes**0.56))
 
 
 class UEDLSTM(nn.Module):
@@ -29,7 +29,6 @@ class UEDLSTM(nn.Module):
         self,
         *,
         vocabulary_size: int,
-        num_activities: int,
         num_layers: int,
         hidden_size: int,
         dropout: float,
@@ -39,16 +38,14 @@ class UEDLSTM(nn.Module):
         Args:
             vocabulary_size: Number of input indices, special ones included. The output classes
                 are the indices from UNK on.
-            num_activities: Number of activities.
             num_layers: Layers of the encoder and of the decoder.
             hidden_size: Width of every LSTM state.
             dropout: Probability of dropping a gate input or hidden feature.
             logit_samples: Gaussian logit draws the loss averages over.
         """
         super().__init__()
-        self.config = {
+        self.arguments = {
             'vocabulary_size': vocabulary_size,
-            'num_activities': num_activities,
             'num_layers': num_layers,
             'hidden_size': hidden_size,
             'dropout': dropout,
@@ -56,28 +53,28 @@ class UEDLSTM(nn.Module):
         }
         self.dropout = dropout
         self.logit_samples = logit_samples
-        width = embedding_dim(num_activities)
+        num_classes = vocabulary_size - UNK
+        width = embedding_dim(num_classes)
         self.encoder_embedding = nn.Embedding(
             num_embeddings=vocabulary_size, embedding_dim=width, padding_idx=PAD
         )
         self.decoder_embedding = nn.Embedding(
             num_embeddings=vocabulary_size, embedding_dim=width, padding_idx=PAD
         )
-        self.encoder_cells = _stack(input_size=width, hidden_size=hidden_size, layers=num_layers)
-        self.decoder_cells = _stack(input_size=width, hidden_size=hidden_size, layers=num_layers)
-        num_outputs = vocabulary_size - UNK
-        self.mean_head = nn.Linear(in_features=hidden_size, out_features=num_outputs)
-        self.log_variance_head = nn.Linear(in_features=hidden_size, out_features=num_outputs)
+        self.encoder_layers = _stack(input_size=width, hidden_size=hidden_size, layers=num_layers)
+        self.decoder_layers = _stack(input_size=width, hidden_size=hidden_size, layers=num_layers)
+        self.mean_head = nn.Linear(in_features=hidden_size, out_features=num_classes)
+        self.log_variance_head = nn.Linear(in_features=hidden_size, out_features=num_classes)
 
     def encode(self, prefixes: Prefixes, *, masks: list[GateMasks]) -> LSTMState:
         """Read the real events of prefixes `[B, P]` and return the top layer's final state."""
         inputs = self.encoder_embedding(prefixes.activities)  # [B, P] -> [B, P, D]
         positions = torch.arange(end=inputs.size(dim=1), device=inputs.device)
         keep = positions.unsqueeze(dim=0) < prefixes.length.unsqueeze(dim=1)  # [B, P]
-        zeros = inputs.new_zeros(size=(inputs.size(dim=0), self.config['hidden_size']))
+        zeros = inputs.new_zeros(size=(inputs.size(dim=0), self.arguments['hidden_size']))
         state = (zeros, zeros)
-        for layer, cell in enumerate(self.encoder_cells):
-            inputs, state = cell(inputs, state, masks=masks[layer], keep=keep)
+        for lstm, layer_masks in zip(self.encoder_layers, masks, strict=True):
+            inputs, state = lstm(inputs, state, masks=layer_masks, keep=keep)
         return state
 
     def decode_step(
@@ -102,9 +99,9 @@ class UEDLSTM(nn.Module):
         first_step = isinstance(states, tuple)
         below = states
         new_states = []
-        for layer, cell in enumerate(self.decoder_cells):
+        for layer, lstm in enumerate(self.decoder_layers):
             state = below if first_step else states[layer]
-            inputs, state = cell(inputs, state, masks=masks[layer])
+            inputs, state = lstm(inputs, state, masks=masks[layer])
             new_states.append(state)
             below = state
         features = inputs.squeeze(dim=1)  # [B, 1, H] -> [B, H]
@@ -121,8 +118,8 @@ class UEDLSTM(nn.Module):
         """
         prefixes, targets = batch
         rows = targets.size(dim=0)
-        encoded = self.encode(prefixes, masks=self._masks(self.encoder_cells, rows=rows))
-        decoder_masks = self._masks(self.decoder_cells, rows=rows)
+        encoded = self.encode(prefixes, masks=self._masks(self.encoder_layers, rows=rows))
+        decoder_masks = self._masks(self.decoder_layers, rows=rows)
         inputs = prefixes.last_events()
         states: LSTMState | list[LSTMState] = encoded
         means, log_variances = [], []
@@ -167,14 +164,14 @@ class UEDLSTM(nn.Module):
         batch_size = prefixes.length.size(dim=0)
         rows, device = batch_size * num_samples, prefixes.length.device
         prefixes = prefixes.repeat_interleave(num_samples)
-        encoded = self.encode(prefixes, masks=self._masks(self.encoder_cells, rows=rows))
+        encoded = self.encode(prefixes, masks=self._masks(self.encoder_layers, rows=rows))
         states: LSTMState | list[LSTMState] = encoded
         inputs = prefixes.last_events()
         activities = torch.full(size=(rows, max_steps), fill_value=PAD, device=device)
         # The output row of every row still decoding.
         live = torch.arange(end=rows, device=device)
         for position in range(max_steps):
-            masks = self._masks(self.decoder_cells, rows=len(live))
+            masks = self._masks(self.decoder_layers, rows=len(live))
             mean, log_variance, states = self.decode_step(inputs, states, masks=masks)
             logits = mean + (0.5 * log_variance).exp() * torch.randn_like(mean)
             classes = torch.multinomial(input=logits.softmax(dim=-1), num_samples=1)
@@ -194,27 +191,27 @@ class UEDLSTM(nn.Module):
             truncated.view(batch_size, num_samples),
         )
 
-    def _masks(self, cells: nn.ModuleList, *, rows: int) -> list[GateMasks]:
+    def _masks(self, layers: nn.ModuleList, *, rows: int) -> list[GateMasks]:
         device = self.mean_head.weight.device
-        return [cell.sample_masks(rows=rows, p=self.dropout, device=device) for cell in cells]
+        return [lstm.sample_masks(rows=rows, p=self.dropout, device=device) for lstm in layers]
 
     def save(self, path: Path) -> None:
         """Write the weights and the constructor arguments."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        torch.save({'config': self.config, 'state_dict': self.state_dict()}, path)
+        torch.save({'arguments': self.arguments, 'state_dict': self.state_dict()}, path)
 
     @classmethod
     def load(cls, path: Path, *, device: torch.device) -> Self:
         """Rebuild a model written by `save`."""
         checkpoint: dict[str, Any] = torch.load(path, map_location=device)
-        model = cls(**checkpoint['config'])
+        model = cls(**checkpoint['arguments'])
         model.load_state_dict(checkpoint['state_dict'])
         return model.to(device)
 
 
 def _stack(*, input_size: int, hidden_size: int, layers: int) -> nn.ModuleList:
     return nn.ModuleList(
-        GateDropoutLSTMCell(
+        GateDropoutLSTM(
             input_size=input_size if layer == 0 else hidden_size, hidden_size=hidden_size
         )
         for layer in range(layers)

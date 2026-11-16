@@ -14,12 +14,8 @@ class GateMasks(NamedTuple):
     inputs: torch.Tensor  # [B, 4, I]
     hidden: torch.Tensor  # [B, 4, H]
 
-    def select(self, index: torch.Tensor) -> 'GateMasks':
-        """Keep the masks of the rows at `index`."""
-        return GateMasks(inputs=self.inputs[index], hidden=self.hidden[index])
 
-
-class GateDropoutLSTMCell(nn.Module):
+class GateDropoutLSTM(nn.Module):
     """LSTM layer with variational dropout on each gate's input and hidden state.
 
     The masks are passed in rather than drawn here, so the caller decides how long a mask lives:

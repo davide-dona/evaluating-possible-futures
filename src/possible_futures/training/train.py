@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 import numpy as np
 import torch
-from omegaconf import DictConfig
 
 from possible_futures.datasets.dataset import EncodedLog, training_batches
 from possible_futures.models.u_ed_lstm import UEDLSTM
@@ -30,46 +29,46 @@ def train(
     model: UEDLSTM,
     *,
     train_log: EncodedLog,
-    config: DictConfig,
+    epochs: int,
+    lr: float,
+    batch_size: int,
+    window: int,
+    weight_penalty: float,
+    grad_clip_norm: float,
+    teacher_forcing: Callable[[int], float],
     device: torch.device,
     rng: np.random.Generator,
     on_epoch: Callable[[EpochRecord], None],
 ) -> None:
-    """Train for `config.epochs` epochs, keeping the final weights.
+    """Train for `epochs` epochs, keeping the final weights.
 
     Args:
         model: The model, on `device`.
         train_log: The train split.
-        config: The `training` section.
+        epochs: Passes over the training cuts.
+        lr: The learning rate of AdamW.
+        batch_size: Cuts per optimizer step.
+        window: Events after the prefix each cut targets.
+        weight_penalty: Weight of the sum of squared parameters in the loss.
+        grad_clip_norm: The norm the gradient is clipped to.
+        teacher_forcing: The teacher forcing probability of every 0-based epoch.
         device: Where batches go.
         rng: Shuffles the training cuts.
         on_epoch: Called with every epoch's record.
     """
-    optimizer = torch.optim.AdamW(params=model.parameters(), lr=config.lr, weight_decay=0.0)
-    for epoch in range(config.epochs):
+    optimizer = torch.optim.AdamW(params=model.parameters(), lr=lr, weight_decay=0.0)
+    for epoch in range(epochs):
         started = time.perf_counter()
-        ratio = teacher_forcing_ratio(
-            epoch,
-            start=config.teacher_forcing.start,
-            decay=config.teacher_forcing.decay,
-            every=config.teacher_forcing.every,
-        )
+        ratio = teacher_forcing(epoch)
         total, rows = 0.0, 0
-        for batch in training_batches(
-            train_log,
-            batch_size=config.batch_size,
-            window=config.window,
-            rng=rng,
-        ):
+        for batch in training_batches(train_log, batch_size=batch_size, window=window, rng=rng):
             batch = batch.to(device)
             means, log_variances = model(batch, teacher_forcing=ratio)
             data_loss = model.loss(means, log_variances, batch.targets)
-            loss = data_loss + config.weight_penalty * model.weight_penalty()
+            loss = data_loss + weight_penalty * model.weight_penalty()
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(
-                parameters=model.parameters(), max_norm=config.grad_clip_norm
-            )
+            torch.nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=grad_clip_norm)
             optimizer.step()
             total += data_loss.item() * len(batch.targets)
             rows += len(batch.targets)
