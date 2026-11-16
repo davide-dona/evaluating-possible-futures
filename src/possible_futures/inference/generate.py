@@ -43,14 +43,11 @@ def generate(
     with pq.ParquetWriter(path, schema=SCHEMA) as writer:
         for cuts, prefixes in test_prefix_batches(log, batch_size=max(1, max_rows // num_samples)):
             prefixes = prefixes.to(device)
-            activities, truncated = model.sample(
-                prefixes, num_samples=num_samples, max_steps=max_steps
-            )
+            activities = model.sample(prefixes, num_samples=num_samples, max_steps=max_steps)
             table = suffix_table(
                 log,
                 cuts,
                 activities=activities.flatten(end_dim=1).cpu().numpy(),  # [B, S, L] -> [B * S, L]
-                truncated=truncated.flatten().cpu().numpy(),
                 draws=num_samples,
                 names=names,
             )

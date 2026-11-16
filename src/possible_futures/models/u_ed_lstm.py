@@ -149,17 +149,14 @@ class UEDLSTM(nn.Module):
         return sum(parameter.square().sum() for parameter in self.parameters())
 
     @torch.no_grad()
-    def sample(
-        self, prefixes: Prefixes, *, num_samples: int, max_steps: int
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    def sample(self, prefixes: Prefixes, *, num_samples: int, max_steps: int) -> torch.Tensor:
         """Draw `num_samples` suffixes per prefix.
 
         Each draw encodes its prefix under its own dropout masks, and at every step draws new
         decoder masks, Gaussian logits around the means, and an activity from their softmax.
 
         Returns:
-            The activity indices `[B, S, L]`, PAD past each draw's end, and `[B, S]` whether a
-            draw reached `max_steps` without EOS.
+            The activity indices `[B, S, L]`, PAD past each draw's end.
         """
         batch_size = prefixes.length.size(dim=0)
         rows, device = batch_size * num_samples, prefixes.length.device
@@ -183,13 +180,8 @@ class UEDLSTM(nn.Module):
             states = [(hidden[continuing], cell[continuing]) for hidden, cell in states]
             if len(live) == 0:
                 break
-        truncated = torch.zeros(size=(rows,), dtype=torch.bool, device=device)
-        truncated[live] = True
         width = int((activities != PAD).sum(dim=1).max())
-        return (
-            activities[:, :width].view(batch_size, num_samples, width),  # [B * S, L] -> [B, S, L]
-            truncated.view(batch_size, num_samples),
-        )
+        return activities[:, :width].view(batch_size, num_samples, width)  # [B * S, L] -> [B, S, L]
 
     def _masks(self, layers: nn.ModuleList, *, rows: int) -> list[GateMasks]:
         device = self.mean_head.weight.device

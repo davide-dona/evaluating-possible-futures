@@ -14,7 +14,6 @@ CASE_COLUMN = 'case'
 PREFIX_LENGTH_COLUMN = 'prefix_length'
 DRAW_COLUMN = 'draw'
 ACTIVITIES_COLUMN = 'activities'
-TRUNCATED_COLUMN = 'truncated'
 
 # One row per drawn suffix, the draws of a prefix on consecutive rows.
 SCHEMA = pa.schema(
@@ -23,7 +22,6 @@ SCHEMA = pa.schema(
         (PREFIX_LENGTH_COLUMN, pa.int32()),
         (DRAW_COLUMN, pa.int32()),
         (ACTIVITIES_COLUMN, pa.list_(pa.dictionary(pa.int16(), pa.string()))),
-        (TRUNCATED_COLUMN, pa.bool_()),
     ]
 )
 
@@ -36,7 +34,6 @@ def suffix_table(
     cuts: Cuts,
     *,
     activities: np.ndarray,
-    truncated: np.ndarray,
     draws: int,
     names: pa.Array,
 ) -> pa.Table:
@@ -47,7 +44,6 @@ def suffix_table(
         cuts: The prefixes.
         activities: The activity indices of every draw, PAD past its end, `[N * draws, L]`, the
             draws of a prefix consecutive.
-        truncated: Whether each draw reached the step limit without ending, `[N * draws]`.
         draws: Draws per prefix.
         names: The name of every vocabulary index.
     """
@@ -61,7 +57,6 @@ def suffix_table(
         PREFIX_LENGTH_COLUMN: pa.array(np.repeat(cuts.length, draws).astype(np.int32)),
         DRAW_COLUMN: pa.array(np.tile(np.arange(draws, dtype=np.int32), len(cuts.case))),
         ACTIVITIES_COLUMN: pa.ListArray.from_arrays(offsets=pa.array(offsets), values=values),
-        TRUNCATED_COLUMN: pa.array(truncated),
     }
     return pa.table(columns, schema=SCHEMA)
 

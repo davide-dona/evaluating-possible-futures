@@ -45,23 +45,21 @@ def write_baseline(
     index = {name: i for i, name in enumerate(vocabulary.names)}
     cuts = log.cuts()
     activities = np.full((len(cuts.case) * draws, max_steps), PAD, dtype=np.int64)
-    truncated = np.zeros(len(cuts.case) * draws, dtype=bool)
     row = 0
     for case, length in zip(cuts.case, cuts.length, strict=True):
         start = log.starts[case]
         prefix = tuple(vocabulary.names[i] for i in log.activities[start : start + length])
         for _ in range(draws):
             if sampled:
-                suffix, truncated[row] = source.sample_suffix(prefix, rng, max_steps=max_steps)
+                suffix = source.sample_suffix(prefix, rng, max_steps=max_steps)
             else:
-                suffix, truncated[row] = source.greedy_suffix(prefix, max_steps=max_steps)
+                suffix = source.greedy_suffix(prefix, max_steps=max_steps)
             activities[row, : len(suffix)] = [index[name] for name in suffix]
             row += 1
     table = suffix_table(
         log,
         cuts,
         activities=activities,
-        truncated=truncated,
         draws=draws,
         names=pa.array(vocabulary.names, type=pa.string()),
     )
@@ -111,7 +109,6 @@ def write_unconditional(
                 log,
                 selected,
                 activities=train.suffixes(drawn),
-                truncated=np.zeros(rows, dtype=bool),
                 draws=num_samples,
                 names=names,
             )

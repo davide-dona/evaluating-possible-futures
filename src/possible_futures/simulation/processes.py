@@ -21,23 +21,14 @@ class Process(ABC):
 
     def sample_suffix(
         self, prefix: tuple[str, ...], rng: np.random.Generator, *, max_steps: int
-    ) -> tuple[tuple[str, ...], bool]:
-        """Draw the activities following `prefix` one at a time until `END`.
-
-        Returns:
-            The drawn activities, and whether `max_steps` of them were drawn without reaching
-            `END`.
-        """
+    ) -> tuple[str, ...]:
+        """Draw the activities following `prefix` one at a time until `END`, at most
+        `max_steps` of them."""
         return self._decode(prefix, lambda options: _choose(options, rng), max_steps=max_steps)
 
-    def greedy_suffix(
-        self, prefix: tuple[str, ...], *, max_steps: int
-    ) -> tuple[tuple[str, ...], bool]:
-        """Take the most probable activity following the prefix at every step, until `END`.
-
-        Returns:
-            As `sample_suffix`.
-        """
+    def greedy_suffix(self, prefix: tuple[str, ...], *, max_steps: int) -> tuple[str, ...]:
+        """Take the most probable activity following the prefix at every step, until `END`,
+        at most `max_steps` of them."""
         return self._decode(
             prefix, lambda options: max(options, key=options.get), max_steps=max_steps
         )
@@ -48,15 +39,15 @@ class Process(ABC):
         pick: Callable[[dict[str, float]], str],
         *,
         max_steps: int,
-    ) -> tuple[tuple[str, ...], bool]:
+    ) -> tuple[str, ...]:
         """Extend the prefix with the activity `pick` chooses among the next ones, until `END`."""
         suffix = []
         while len(suffix) < max_steps:
             activity = pick(self.next_activities((*prefix, *suffix)))
             if activity == END:
-                return tuple(suffix), False
+                break
             suffix.append(activity)
-        return tuple(suffix), True
+        return tuple(suffix)
 
 
 def _choose(options: dict[str, float], rng: np.random.Generator) -> str:
@@ -131,7 +122,7 @@ class SyntheticProcess(Process):
         starts = _ORIGIN + pd.to_timedelta(arrivals, unit='h')
         rows = []
         for number, start in enumerate(starts):
-            trace, _ = self.sample_suffix((), rng, max_steps=self.CASE_LENGTH)
+            trace = self.sample_suffix((), rng, max_steps=self.CASE_LENGTH)
             for position, activity in enumerate(trace):
                 rows.append((f'case-{number:05d}', activity, start + pd.Timedelta(hours=position)))
         return pd.DataFrame(rows, columns=[CASE_KEY, ACTIVITY_KEY, TIMESTAMP_KEY])
