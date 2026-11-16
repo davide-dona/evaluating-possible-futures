@@ -58,12 +58,12 @@ resolved configuration in `.hydra/config.yaml` inside its output directory.
 
 | Stage | Writes | What it does |
 | --- | --- | --- |
-| preprocess | `data/<dataset>/processed/` | Drops the cases above the 98.5th percentile of length or the 95th percentile of duration, then every prefix ending less than that duration before the end of the log. Splits the rest out of time and fits the activity vocabulary on train. |
+| preprocess | `data/<dataset>/processed/` | Drops the cases above the 98.5th percentile of length or the 95th percentile of duration, then every prefix ending less than that duration before the end of the log. Splits the rest out of time and fits the activity vocabulary on train. Writes the length of the longest case kept, which is the most events a drawn suffix holds. |
 | train | `outputs/<dataset>/train/` | Trains for 100 epochs and keeps the final weights, `model.pt`, with the loss of every epoch in `log.csv`. |
 | generate | `outputs/<dataset>/generate/` | Writes `sampled.parquet`, one row per drawn suffix of every test prefix. |
 | collapse | `outputs/<dataset>/collapse/` | Writes `medoid.parquet`, the medoid of the sampled suffixes of every test prefix. |
 | baselines | `outputs/<dataset>/baselines/` | Writes `unconditional.parquet`, the suffixes drawn from train for every test prefix. It needs no model. |
-| evaluate | `outputs/<dataset>/evaluate/` | Writes `scores.parquet`, one row per prefix and decoding, and prints the means. It scores the prefixes in `workers` processes, 8 by default. |
+| evaluate | `outputs/<dataset>/evaluate/` | Writes `scores.csv`, the mean DLS and the three energy scores of every decoding. It scores the prefixes in `workers` processes, 8 by default. |
 
 `evaluate` scores every decoding in `outputs/<dataset>/generate/`, `outputs/<dataset>/collapse/`
 and `outputs/<dataset>/baselines/`. A decoding is one Parquet file, named after it.

@@ -5,20 +5,26 @@ from omegaconf import DictConfig
 from possible_futures.datasets.dataset import EncodedLog
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.inference.generate import generate
-from possible_futures.logs.io import read_split
-from possible_futures.logs.keys import Split
+from possible_futures.logs.io import read_max_case_length, read_split
 from possible_futures.models.u_ed_lstm import UEDLSTM
 from possible_futures.runs.console import banner, step
-from possible_futures.runs.paths import split_file, stage_dir, vocabulary_file
+from possible_futures.runs.paths import (
+    Split,
+    max_case_length_file,
+    model_file,
+    sampled_file,
+    split_file,
+    vocabulary_file,
+)
 
 
-def run(config: DictConfig) -> None:
+@hydra.main(version_base='1.3', config_path='../config', config_name='generate')
+def main(config: DictConfig) -> None:
     """Draw sampled suffixes for every scored test prefix from the trained model."""
     torch.manual_seed(config.seed)
     device = torch.device(config.device)
     name = config.data.name
-    checkpoint = stage_dir(name, 'train') / 'model.pt'
-    path = stage_dir(name, 'generate') / 'sampled.parquet'
+    checkpoint, path = model_file(name), sampled_file(name)
     banner(
         f'Generating suffixes on "{name}"',
         {
@@ -40,15 +46,11 @@ def run(config: DictConfig) -> None:
             vocabulary,
             path=path,
             num_samples=config.num_samples,
+            max_steps=read_max_case_length(max_case_length_file(name)),
             max_rows=config.max_rows,
             device=device,
         )
         print(f'  {prefixes:,} prefixes', flush=True)
-
-
-@hydra.main(version_base='1.3', config_path='../config', config_name='generate')
-def main(config: DictConfig) -> None:
-    run(config)
 
 
 if __name__ == '__main__':

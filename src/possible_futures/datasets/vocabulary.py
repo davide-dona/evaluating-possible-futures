@@ -19,30 +19,22 @@ _SPECIAL_NAMES = ('<PAD>', '<UNK>', '<EOS>')
 
 @dataclass(frozen=True)
 class Vocabulary:
-    """The activities of the train split, and the longest case kept by preprocessing.
+    """The activities of the train split.
 
     Index 0 is PAD, 1 UNK, 2 EOS, then the activities in sorted order.
     """
 
     activities: tuple[str, ...]
-    max_case_length: int
 
     @classmethod
-    def fit(cls, train: pd.DataFrame, *, max_case_length: int) -> Self:
+    def fit(cls, train: pd.DataFrame) -> Self:
         """Read the activities off the train split."""
-        return cls(
-            activities=tuple(sorted(train[ACTIVITY_KEY].unique())), max_case_length=max_case_length
-        )
+        return cls(activities=tuple(sorted(train[ACTIVITY_KEY].unique())))
 
     @property
     def size(self) -> int:
         """The number of indices, special ones included."""
         return len(_SPECIAL_NAMES) + len(self.activities)
-
-    @property
-    def num_outputs(self) -> int:
-        """The number of classes the model predicts: UNK, EOS, and every activity."""
-        return self.size - UNK
 
     @property
     def names(self) -> tuple[str, ...]:
@@ -59,17 +51,8 @@ class Vocabulary:
         return activities.where(activities.isin(self.activities), self.names[UNK])
 
     def save(self, path: Path) -> None:
-        path.write_text(
-            json.dumps(
-                {'activities': list(self.activities), 'max_case_length': self.max_case_length},
-                indent=2,
-            )
-            + '\n'
-        )
+        path.write_text(json.dumps({'activities': list(self.activities)}, indent=2) + '\n')
 
     @classmethod
     def load(cls, path: Path) -> Self:
-        fields = json.loads(path.read_text())
-        return cls(
-            activities=tuple(fields['activities']), max_case_length=fields['max_case_length']
-        )
+        return cls(activities=tuple(json.loads(path.read_text())['activities']))

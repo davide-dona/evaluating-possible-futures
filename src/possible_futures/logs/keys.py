@@ -1,13 +1,3 @@
-from enum import StrEnum
-
-
-class Split(StrEnum):
-    """The two splits preprocessing cuts a log into, named as their files on disk are."""
-
-    TRAIN = 'train'
-    TEST = 'test'
-
-
 # Canonical column names, following the pm4py naming convention.
 CASE_KEY = 'case:concept:name'
 ACTIVITY_KEY = 'concept:name'

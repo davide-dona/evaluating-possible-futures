@@ -6,7 +6,11 @@ import pandas as pd
 import torch
 
 from possible_futures.evaluation.distances import DISTANCES
-from possible_futures.inference.generate import CASE_COLUMN, PREFIX_LENGTH_COLUMN, read_generations
+from possible_futures.inference.generations import (
+    CASE_COLUMN,
+    PREFIX_LENGTH_COLUMN,
+    read_generations,
+)
 from possible_futures.logs.keys import ACTIVITY_KEY, CASE_KEY
 
 
@@ -36,16 +40,17 @@ def prefix_scores(draws: list[str], observed: str) -> dict[str, float]:
     return scores
 
 
-def score_generations(generations: Path, test: pd.DataFrame, *, workers: int) -> pd.DataFrame:
-    """Score every prefix of a generations file against its observed suffix.
+def score_generations(generations: Path, test: pd.DataFrame, *, workers: int) -> dict[str, float]:
+    """Score a generations file against the observed suffixes, every prefix weighed equally.
 
     Args:
-        generations: A file in the `SCHEMA` of `possible_futures.inference.generate`.
+        generations: A file in the `SCHEMA` of `possible_futures.inference.generations`.
         test: The test split, read by `read_split`.
         workers: Processes scoring the prefixes in parallel.
 
     Returns:
-        One row per prefix: its case, its length, and the `prefix_scores` columns.
+        The mean DLS, as `DLS`, and the fair energy score under every distance, as
+        `ES <distance>`.
     """
     draws = read_generations(generations, other_names=test[ACTIVITY_KEY].unique())
     activities = test[ACTIVITY_KEY].map(draws.characters)
@@ -53,27 +58,17 @@ def score_generations(generations: Path, test: pd.DataFrame, *, workers: int) ->
     cases = draws.table[CASE_COLUMN].to_numpy(zero_copy_only=False)
     lengths = draws.table[PREFIX_LENGTH_COLUMN].to_numpy()
     bounds = list(draws.prefixes())
-    starts = [start for start, _ in bounds]
     drawn = [draws.suffixes[start:stop] for start, stop in bounds]
-    observed = [traces[cases[start]][lengths[start] :] for start in starts]
+    observed = [traces[cases[start]][lengths[start] :] for start, _ in bounds]
     # One torch thread per process, so the processes do not oversubscribe the cores.
     with ProcessPoolExecutor(
         max_workers=workers, initializer=torch.set_num_threads, initargs=(1,)
     ) as pool:
         scores = pool.map(
-            prefix_scores, drawn, observed, chunksize=max(1, len(starts) // (16 * workers))
+            prefix_scores, drawn, observed, chunksize=max(1, len(bounds) // (16 * workers))
         )
-        frame = pd.DataFrame(list(scores))
-    frame.insert(0, CASE_COLUMN, cases[starts])
-    frame.insert(1, PREFIX_LENGTH_COLUMN, lengths[starts].astype(int))
-    return frame
-
-
-def summary(scores: pd.DataFrame) -> pd.DataFrame:
-    """The mean DLS and fair energy scores of every decoding, one row each, every prefix weighed
-    equally."""
-    means = scores.groupby('decoding', sort=False).mean(numeric_only=True)
-    columns = {'DLS': 1.0 - means['dl_accuracy']}
-    for distance in DISTANCES:
-        columns[f'ES {distance}'] = means[f'{distance}_accuracy'] - means[f'{distance}_spread']
-    return pd.DataFrame(columns)
+        means = pd.DataFrame(list(scores)).mean()
+    return {'DLS': 1.0 - means['dl_accuracy']} | {
+        f'ES {distance}': means[f'{distance}_accuracy'] - means[f'{distance}_spread']
+        for distance in DISTANCES
+    }
