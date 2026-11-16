@@ -99,6 +99,9 @@ class SyntheticProcess(Process):
             if not 0.0 <= getattr(self, name) <= 1.0:
                 raise ValueError(f'{name} must be a probability, got {getattr(self, name)}')
 
+    def __str__(self) -> str:
+        return f'P(B | A) = {self.p_b}, P(E | B, D) = {self.q_b}, P(E | C, D) = {self.q_c}'
+
     def next_activities(self, prefix: tuple[str, ...]) -> dict[str, float]:
         match prefix:
             case ():

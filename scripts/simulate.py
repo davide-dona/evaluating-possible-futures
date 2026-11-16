@@ -17,8 +17,7 @@ def main(config: DictConfig) -> None:
     banner(
         f'Simulating "{data.name}"',
         {
-            'process': f'P(B | A) = {process.p_b}, P(E | B, D) = {process.q_b}, '
-            f'P(E | C, D) = {process.q_c}',
+            'process': process,
             'cases': f'{data.num_cases:,}',
             'seed': data.simulation_seed,
             'original log': path,
