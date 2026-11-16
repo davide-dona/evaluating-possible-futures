@@ -5,7 +5,7 @@ import pandas as pd
 from possible_futures.logs.keys import ACTIVITY_KEY
 from possible_futures.logs.statistics import case_durations, case_lengths, num_variants
 
-# The columns of `possible_futures.evaluation.scores.summary` in the order printed, each with its
+# The columns of the scores the evaluate stage writes, in the order printed, each with its
 # header in the paper's macros and whether a higher mean is better.
 METRICS = {
     'DLS': (r'$\meanDLS$~$\uparrow$', True),
@@ -20,8 +20,8 @@ def scores_table(means: Mapping[str, pd.DataFrame], decodings: Mapping[str, str]
     """A booktabs `tabular` of the means of every dataset.
 
     Args:
-        means: The `summary` of every dataset, keyed by the name the table prints. A table of a
-            single dataset has no dataset column.
+        means: The scores the evaluate stage writes for every dataset, keyed by the name the
+            table prints. A table of a single dataset has no dataset column.
         decodings: The macro of every decoding, in the order of the rows. A decoding a dataset
             was not scored on has no row.
 

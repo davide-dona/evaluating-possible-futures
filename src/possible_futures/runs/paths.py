@@ -43,4 +43,4 @@ def sampled_file(dataset: str) -> Path:
 
 
 def scores_file(dataset: str) -> Path:
-    return stage_dir(dataset, 'evaluate') / 'scores.parquet'
+    return stage_dir(dataset, 'evaluate') / 'scores.csv'

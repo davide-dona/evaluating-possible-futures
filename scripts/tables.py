@@ -2,7 +2,6 @@ import hydra
 import pandas as pd
 from omegaconf import DictConfig
 
-from possible_futures.evaluation.scores import summary
 from possible_futures.logs.io import read_split
 from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import OUTPUTS, Split, scores_file, split_file
@@ -25,7 +24,7 @@ def main(config: DictConfig) -> None:
         path = output / f'{name}.tex'
         with step(f'Writing {path}'):
             means = {
-                config.datasets[dataset]: summary(pd.read_parquet(scores_file(dataset)))
+                config.datasets[dataset]: pd.read_csv(scores_file(dataset), index_col='decoding')
                 for dataset in table.datasets
             }
             decodings = {decoding: config.decodings[decoding] for decoding in table.decodings}
