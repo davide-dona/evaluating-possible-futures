@@ -1,5 +1,3 @@
-from abc import ABC, abstractmethod
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import ClassVar
 
@@ -7,65 +5,13 @@ import numpy as np
 import pandas as pd
 
 from possible_futures.logs.keys import ACTIVITY_KEY, CASE_KEY, TIMESTAMP_KEY
-
-# The pseudo-activity that ends a case.
-END = '<END>'
-
-
-class Process(ABC):
-    """A source of the distribution of the activity that follows a prefix."""
-
-    @abstractmethod
-    def next_activities(self, prefix: tuple[str, ...]) -> dict[str, float]:
-        """The probability of every activity, or of `END`, right after `prefix`."""
-
-    def sample_suffix(
-        self, prefix: tuple[str, ...], rng: np.random.Generator, *, max_steps: int
-    ) -> tuple[str, ...]:
-        """Draw the activities following `prefix` one at a time until `END`, at most
-        `max_steps` of them."""
-        return self._decode(prefix, lambda options: _choose(options, rng), max_steps=max_steps)
-
-    def greedy_suffix(self, prefix: tuple[str, ...], *, max_steps: int) -> tuple[str, ...]:
-        """Take the most probable activity following the prefix at every step, until `END`,
-        at most `max_steps` of them."""
-        return self._decode(
-            prefix, lambda options: max(options, key=options.get), max_steps=max_steps
-        )
-
-    def _decode(
-        self,
-        prefix: tuple[str, ...],
-        pick: Callable[[dict[str, float]], str],
-        *,
-        max_steps: int,
-    ) -> tuple[str, ...]:
-        """Extend the prefix with the activity `pick` chooses among the next ones, until `END`."""
-        suffix = []
-        while len(suffix) < max_steps:
-            activity = pick(self.next_activities((*prefix, *suffix)))
-            if activity == END:
-                break
-            suffix.append(activity)
-        return tuple(suffix)
-
-
-def _choose(options: dict[str, float], rng: np.random.Generator) -> str:
-    """Draw one of the options with its probability."""
-    threshold = rng.random()
-    for option, probability in options.items():
-        threshold -= probability
-        if threshold < 0.0:
-            return option
-    # Rounding can leave the threshold just above zero after the last option.
-    return option
-
+from possible_futures.processes.decoding import END, Process
 
 # When the first simulated case starts.
 _ORIGIN = pd.Timestamp('2026-01-01')
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class SyntheticProcess(Process):
     """A, then B or C, then D, then E or F, then G.
 
@@ -93,7 +39,7 @@ class SyntheticProcess(Process):
     def __str__(self) -> str:
         return f'P(B | A) = {self.p_b}, P(E | B, D) = {self.q_b}, P(E | C, D) = {self.q_c}'
 
-    def next_activities(self, prefix: tuple[str, ...]) -> dict[str, float]:
+    def next_activity_probabilities(self, prefix: tuple[str, ...]) -> dict[str, float]:
         match prefix:
             case ():
                 return {'A': 1.0}
@@ -119,10 +65,10 @@ class SyntheticProcess(Process):
             One row per event with the case, the activity, and the timestamp, in case order.
         """
         arrivals = np.cumsum(rng.exponential(1.0, size=num_cases))
-        starts = _ORIGIN + pd.to_timedelta(arrivals, unit='h')
+        case_starts = _ORIGIN + pd.to_timedelta(arrivals, unit='h')
         rows = []
-        for number, start in enumerate(starts):
-            trace = self.sample_suffix((), rng, max_steps=self.CASE_LENGTH)
+        for number, start in enumerate(case_starts):
+            trace = self.sample_suffix((), rng=rng, max_steps=self.CASE_LENGTH)
             for position, activity in enumerate(trace):
                 rows.append((f'case-{number:05d}', activity, start + pd.Timedelta(hours=position)))
         return pd.DataFrame(rows, columns=[CASE_KEY, ACTIVITY_KEY, TIMESTAMP_KEY])

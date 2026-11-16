@@ -5,7 +5,7 @@ data:
   activity_key: Activity
   timestamp_key: CompleteTimestamp
   separator: ','
-  test_split: 0.2
+  test_fraction: 0.2
   max_case_length_percentile: 98.5
   # Also the length of the debiased window at the end of the log.
   max_case_duration_percentile: 95

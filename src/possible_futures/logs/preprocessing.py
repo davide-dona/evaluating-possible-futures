@@ -1,8 +1,15 @@
+from typing import NamedTuple
+
 import numpy as np
 import pandas as pd
 
 from possible_futures.logs.keys import CASE_KEY, MAX_PREFIX_KEY, MIN_PREFIX_KEY, TIMESTAMP_KEY
-from possible_futures.logs.statistics import case_durations, case_lengths
+from possible_futures.logs.statistics import case_durations_days, case_lengths
+
+
+class TrainTestSplit(NamedTuple):
+    train: pd.DataFrame
+    test: pd.DataFrame
 
 
 def drop_outlier_cases(
@@ -13,7 +20,7 @@ def drop_outlier_cases(
 
     A case spanning decades is a broken timestamp rather than a slow process.
     """
-    kept = (case_durations(log) <= max_duration_days) & (case_lengths(log) <= max_length)
+    kept = (case_durations_days(log) <= max_duration_days) & (case_lengths(log) <= max_length)
     return log[log[CASE_KEY].isin(kept.index[kept])]
 
 
@@ -57,42 +64,42 @@ def sort_log(log: pd.DataFrame) -> pd.DataFrame:
     return log.drop(columns='_case_rank').reset_index(drop=True)
 
 
-def out_of_time_split(log: pd.DataFrame, *, test_frac: float) -> tuple[pd.DataFrame, pd.DataFrame]:
+def out_of_time_split(log: pd.DataFrame, *, test_fraction: float) -> TrainTestSplit:
     """Split a log out of time into train and test.
 
-    The separation is the start of the case at the `1 - test_frac` quantile of case starts.
+    The separation is the start of the case at the `1 - test_fraction` quantile of case starts.
     Train keeps the cases finished before it, test the cases still running at it. A test case
     that started before the separation keeps only the cuts whose prefix reaches past it, since
     its earlier prefixes would be predicted with training data from their future.
 
     Args:
         log: The debiased log, sorted by case start and then by timestamp.
-        test_frac: Fraction of all cases the separation time is placed at.
+        test_fraction: Fraction of all cases the separation time is placed at.
 
     Returns:
-        `(train, test)`, row subsets of `log` with `MIN_PREFIX_KEY` added: 1 everywhere
+        Train and test, row subsets of `log` with `MIN_PREFIX_KEY` added: 1 everywhere
         except on the crossing test cases.
     """
     log = log.assign(**{MIN_PREFIX_KEY: 1})
     edges = log.groupby(CASE_KEY)[TIMESTAMP_KEY].agg(['min', 'max'])
-    starts_ts, stops_ts = edges['min'], edges['max']
+    start_times, stop_times = edges['min'], edges['max']
 
-    first_test_case = int(len(edges) * (1 - test_frac))
-    separation_ts = np.sort(starts_ts.values)[first_test_case]
+    first_test_case = int(len(edges) * (1 - test_fraction))
+    separation_time = np.sort(start_times.values)[first_test_case]
 
-    train_cases = stops_ts.index[stops_ts.values < separation_ts]
+    train_cases = stop_times.index[stop_times.values < separation_time]
     train = log[log[CASE_KEY].isin(train_cases)]
 
-    test_cases = stops_ts.index[stops_ts.values >= separation_ts]
-    crossing = test_cases.difference(starts_ts.sort_values().index[first_test_case:])
+    test_cases = stop_times.index[stop_times.values >= separation_time]
+    crossing = test_cases.difference(start_times.sort_values().index[first_test_case:])
     test = _bound_crossing_prefixes(
-        log[log[CASE_KEY].isin(test_cases)], separation_ts=separation_ts, crossing=crossing
+        log[log[CASE_KEY].isin(test_cases)], separation_time=separation_time, crossing=crossing
     )
-    return train, test
+    return TrainTestSplit(train=train, test=test)
 
 
 def _bound_crossing_prefixes(
-    split: pd.DataFrame, *, separation_ts: np.datetime64, crossing: pd.Index
+    split: pd.DataFrame, *, separation_time: np.datetime64, crossing: pd.Index
 ) -> pd.DataFrame:
     """Raise `MIN_PREFIX_KEY` of the crossing cases to their first cut whose prefix holds an
     event after the separation."""
@@ -103,7 +110,7 @@ def _bound_crossing_prefixes(
     positions = rows.groupby(CASE_KEY).cumcount() + 1
     # Compared as numpy values, since a tz-aware column and a numpy timestamp are not comparable
     # as pandas objects.
-    selected = rows[TIMESTAMP_KEY].values > separation_ts
+    selected = rows[TIMESTAMP_KEY].values > separation_time
     bounds = positions[selected].groupby(rows[CASE_KEY][selected]).min()
     split[MIN_PREFIX_KEY] = split[CASE_KEY].map(bounds).fillna(split[MIN_PREFIX_KEY]).astype(int)
     return split

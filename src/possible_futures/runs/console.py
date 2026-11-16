@@ -3,7 +3,7 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 
 
-def duration(seconds: float) -> str:
+def format_duration(seconds: float) -> str:
     """Format an elapsed time for a person reading a log.
 
     Args:
@@ -48,4 +48,4 @@ def step(message: str) -> Iterator[None]:
     print(f'{message}...', flush=True)
     started = time.perf_counter()
     yield
-    print(f'  done in {duration(time.perf_counter() - started)}', flush=True)
+    print(f'  done in {format_duration(time.perf_counter() - started)}', flush=True)

@@ -1,16 +1,20 @@
+import csv
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, fields
+from pathlib import Path
+from types import TracebackType
+from typing import Self
 
 import numpy as np
 import torch
 from torch import nn
 
-from possible_futures.datasets.dataset import EncodedLog, training_batches
+from possible_futures.datasets.encoded_log import EncodedLog
 from possible_futures.models.u_ed_lstm import UEDLSTM
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class EpochRecord:
     """The loss of one epoch: cross-entropy per prefix, without the weight penalty."""
 
@@ -20,10 +24,32 @@ class EpochRecord:
     seconds: float
 
 
-def teacher_forcing_ratio(epoch: int, *, start: float, decay: float, every: int) -> float:
-    """The teacher forcing probability of a 0-based epoch, multiplied by `decay` every `every`
-    epochs."""
-    return start * decay ** (epoch // every)
+class EpochLog:
+    """A CSV file of `EpochRecord` rows, each written and flushed as its epoch ends."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def __enter__(self) -> Self:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._file = self.path.open('w', newline='')
+        self._writer = csv.DictWriter(
+            self._file, fieldnames=[field.name for field in fields(EpochRecord)]
+        )
+        self._writer.writeheader()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self._file.close()
+
+    def append(self, record: EpochRecord) -> None:
+        self._writer.writerow(asdict(record))
+        self._file.flush()
 
 
 def squared_weights(module: nn.Module) -> torch.Tensor:
@@ -41,7 +67,9 @@ def train(
     window: int,
     weight_penalty: float,
     grad_clip_norm: float,
-    teacher_forcing: Callable[[int], float],
+    teacher_forcing_start: float,
+    teacher_forcing_decay: float,
+    teacher_forcing_every: int,
     device: torch.device,
     rng: np.random.Generator,
     on_epoch: Callable[[EpochRecord], None],
@@ -57,7 +85,10 @@ def train(
         window: Events after the prefix each cut targets.
         weight_penalty: Weight of the sum of squared parameters in the loss.
         grad_clip_norm: The norm the gradient is clipped to.
-        teacher_forcing: The teacher forcing probability of every 0-based epoch.
+        teacher_forcing_start: The teacher forcing probability of the first epoch.
+        teacher_forcing_decay: The factor the probability is multiplied by every
+            `teacher_forcing_every` epochs.
+        teacher_forcing_every: Epochs between two decays.
         device: Where batches go.
         rng: Shuffles the training cuts and flips the teacher forcing coins.
         on_epoch: Called with every epoch's record.
@@ -65,9 +96,9 @@ def train(
     optimizer = torch.optim.AdamW(params=model.parameters(), lr=lr, weight_decay=0.0)
     for epoch in range(epochs):
         started = time.perf_counter()
-        ratio = teacher_forcing(epoch)
+        ratio = teacher_forcing_start * teacher_forcing_decay ** (epoch // teacher_forcing_every)
         total, rows = 0.0, 0
-        for batch in training_batches(train_log, batch_size=batch_size, window=window, rng=rng):
+        for batch in train_log.training_batches(batch_size=batch_size, window=window, rng=rng):
             batch = batch.to(device)
             forced = rng.random(size=window - 1) < ratio
             logits = model(batch, forced=forced.tolist())

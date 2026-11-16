@@ -4,8 +4,12 @@ from typing import NamedTuple
 import torch
 from torch import nn
 
-# The hidden and cell states of one layer, `[B, H]` each.
-LSTMState = tuple[torch.Tensor, torch.Tensor]
+
+class LSTMState(NamedTuple):
+    """The states of one layer."""
+
+    hidden: torch.Tensor  # [B, H]
+    cell: torch.Tensor  # [B, H]
 
 
 class GateMasks(NamedTuple):
@@ -15,7 +19,7 @@ class GateMasks(NamedTuple):
     hidden: torch.Tensor  # [B, 4, H]
 
 
-class GateDropoutLSTM(nn.Module):
+class GateDropoutLSTMLayer(nn.Module):
     """LSTM layer with variational dropout on each gate's input and hidden state.
 
     The masks are passed in rather than drawn here, so the caller decides how long a mask lives:
@@ -69,7 +73,7 @@ class GateDropoutLSTM(nn.Module):
         )
         input_gate, forget_gate, candidate, output_gate = gates.unbind(dim=1)  # 4 x [B, H]
         cell = forget_gate.sigmoid() * cell + input_gate.sigmoid() * candidate.tanh()
-        return output_gate.sigmoid() * cell.tanh(), cell
+        return LSTMState(hidden=output_gate.sigmoid() * cell.tanh(), cell=cell)
 
     def forward(
         self,
@@ -77,7 +81,7 @@ class GateDropoutLSTM(nn.Module):
         state: LSTMState,
         *,
         masks: GateMasks,
-        keep: torch.Tensor | None = None,
+        advancing: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, LSTMState]:
         """Run the layer over inputs `[B, T, I]` from `state`.
 
@@ -85,8 +89,8 @@ class GateDropoutLSTM(nn.Module):
             inputs: One input per position.
             state: The hidden and cell states before the first position.
             masks: The dropout masks, shared by every position.
-            keep: `[B, T]`, False where a row keeps its state instead of advancing, or None to
-                advance every row at every position.
+            advancing: `[B, T]`, True where a row advances and False where it keeps its state,
+                or None to advance every row at every position.
 
         Returns:
             The hidden state after each position, `[B, T, H]`, and the final state.
@@ -101,17 +105,18 @@ class GateDropoutLSTM(nn.Module):
             next_hidden, next_cell = self._step(
                 projected_inputs=projected[:, position], hidden=gate_hidden, cell=cell
             )
-            if keep is not None:
-                advance = keep[:, position].unsqueeze(dim=1)  # [B, 1]
+            if advancing is not None:
+                advance = advancing[:, position].unsqueeze(dim=1)  # [B, 1]
                 next_hidden = torch.where(condition=advance, input=next_hidden, other=hidden)
                 next_cell = torch.where(condition=advance, input=next_cell, other=cell)
             hidden, cell = next_hidden, next_cell
             outputs.append(hidden)
-        return torch.stack(outputs, dim=1), (hidden, cell)  # T x [B, H] -> [B, T, H]
+        # T x [B, H] -> [B, T, H]
+        return torch.stack(outputs, dim=1), LSTMState(hidden=hidden, cell=cell)
 
 
 class GateDropoutStack(nn.Module):
-    """Stacked `GateDropoutLSTM` layers, each reading the outputs of the layer below."""
+    """Stacked `GateDropoutLSTMLayer` layers, each reading the outputs of the layer below."""
 
     def __init__(self, *, input_size: int, hidden_size: int, num_layers: int, dropout: float):
         """
@@ -124,7 +129,7 @@ class GateDropoutStack(nn.Module):
         super().__init__()
         self.hidden_size = hidden_size
         self.layers = nn.ModuleList(
-            GateDropoutLSTM(
+            GateDropoutLSTMLayer(
                 input_size=input_size if layer == 0 else hidden_size,
                 hidden_size=hidden_size,
                 dropout=dropout,
@@ -136,13 +141,13 @@ class GateDropoutStack(nn.Module):
         """Draw the dropout masks of every layer, bottom first."""
         return [layer.sample_masks(rows) for layer in self.layers]
 
-    def chained(
+    def forward_chained(
         self,
         inputs: torch.Tensor,
         state: LSTMState,
         *,
         masks: list[GateMasks],
-        keep: torch.Tensor | None = None,
+        advancing: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, list[LSTMState]]:
         """Run the stack over inputs `[B, T, I]`, the bottom layer from `state` and every upper
         layer from the final state of the layer below.
@@ -151,8 +156,8 @@ class GateDropoutStack(nn.Module):
             inputs: One input per position.
             state: The bottom layer's state before the first position.
             masks: The dropout masks of every layer.
-            keep: `[B, T]`, False where a row keeps its state instead of advancing, or None to
-                advance every row at every position.
+            advancing: `[B, T]`, True where a row advances and False where it keeps its state,
+                or None to advance every row at every position.
 
         Returns:
             The top layer's hidden state after each position, `[B, T, H]`, and every layer's
@@ -160,7 +165,9 @@ class GateDropoutStack(nn.Module):
         """
         states = []
         for layer, layer_masks in zip(self.layers, masks, strict=True):
-            inputs, state = layer(inputs=inputs, state=state, masks=layer_masks, keep=keep)
+            inputs, state = layer(
+                inputs=inputs, state=state, masks=layer_masks, advancing=advancing
+            )
             states.append(state)
         return inputs, states
 

@@ -10,6 +10,7 @@ dependencies = [
     "pandas>=3.0.5",
     "pyarrow>=25.0.0",
     "rapidfuzz>=3.14.0",
+    "safetensors>=0.8.0",
     "torch>=2.13.0",
 ]
 

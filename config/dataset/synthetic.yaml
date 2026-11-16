@@ -5,7 +5,7 @@ data:
   activity_key: concept:name
   timestamp_key: time:timestamp
   separator: ','
-  test_split: 0.2
+  test_fraction: 0.2
   # Every case holds 5 events and lasts 4 hours, so no case is an outlier.
   max_case_length_percentile: 100
   # Also the length of the debiased window at the end of the log.

@@ -1,4 +1,5 @@
 defaults:
+- tables_schema
 - override hydra/job_logging: disabled
 - override hydra/hydra_logging: disabled
 - _self_
@@ -34,3 +35,18 @@ decodings:
   oracle_greedy: \OracleGreedy
   markov_sampled: \MarkovSampled
   markov_greedy: \MarkovGreedy
+# The columns of every table of scores, keyed by their column in scores.csv and in the order
+# printed, each with its header in the paper's macros and whether a higher mean is better.
+metrics:
+  DLS:
+    header: $\meanDLS$~$\uparrow$
+    higher_is_better: true
+  ES dl:
+    header: \DL~$\downarrow$
+    higher_is_better: false
+  ES exact:
+    header: \exact~$\downarrow$
+    higher_is_better: false
+  ES bigram:
+    header: \ngram[2]~$\downarrow$
+    higher_is_better: false

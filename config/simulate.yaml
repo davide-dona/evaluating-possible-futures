@@ -1,4 +1,5 @@
 defaults:
+- simulate_schema
 - output/default
 - dataset: synthetic
 - _self_

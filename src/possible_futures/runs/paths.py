@@ -13,7 +13,18 @@ class Split(StrEnum):
     TEST = 'test'
 
 
-def original_log(dataset: str) -> Path:
+class Stage(StrEnum):
+    """The stages writing under `OUTPUTS`, named as their scripts are, since
+    `config/output/default.yaml` names the directory of a stage after its script."""
+
+    TRAIN = 'train'
+    GENERATE = 'generate'
+    COLLAPSE = 'collapse'
+    BASELINES = 'baselines'
+    EVALUATE = 'evaluate'
+
+
+def original_log_file(dataset: str) -> Path:
     return DATA / dataset / 'original.csv'
 
 
@@ -29,18 +40,18 @@ def max_case_length_file(dataset: str) -> Path:
     return DATA / dataset / 'processed' / 'max_case_length.txt'
 
 
-def stage_dir(dataset: str, stage: str) -> Path:
+def stage_dir(dataset: str, stage: Stage) -> Path:
     """The output directory of a stage, as `config/output/default.yaml` sets it."""
     return OUTPUTS / dataset / stage
 
 
-def model_file(dataset: str) -> Path:
-    return stage_dir(dataset, 'train') / 'model.pt'
+def model_dir(dataset: str) -> Path:
+    return stage_dir(dataset, Stage.TRAIN)
 
 
 def sampled_file(dataset: str) -> Path:
-    return stage_dir(dataset, 'generate') / 'sampled.parquet'
+    return stage_dir(dataset, Stage.GENERATE) / 'sampled.parquet'
 
 
 def scores_file(dataset: str) -> Path:
-    return stage_dir(dataset, 'evaluate') / 'scores.csv'
+    return stage_dir(dataset, Stage.EVALUATE) / 'scores.csv'

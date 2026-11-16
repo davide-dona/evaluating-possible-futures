@@ -1,19 +1,22 @@
 import hydra
 import numpy as np
-from omegaconf import DictConfig
+from hydra.core.config_store import ConfigStore
 
 from possible_futures.logs.keys import CASE_KEY
+from possible_futures.processes.synthetic import SyntheticProcess
+from possible_futures.runs.configs import SimulateConfig
 from possible_futures.runs.console import banner, step
-from possible_futures.runs.paths import original_log
-from possible_futures.simulation.processes import SyntheticProcess
+from possible_futures.runs.paths import original_log_file
+
+ConfigStore.instance().store(name='simulate_schema', node=SimulateConfig)
 
 
 @hydra.main(version_base='1.3', config_path='../config', config_name='simulate')
-def main(config: DictConfig) -> None:
+def main(config: SimulateConfig) -> None:
     """Draw the synthetic log from its process and write it as an original log."""
     data = config.data
     process = SyntheticProcess(**data.process)
-    path = original_log(data.name)
+    path = original_log_file(data.name)
     banner(
         f'Simulating "{data.name}"',
         {

@@ -1,51 +1,46 @@
+from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
-import numpy as np
-import pyarrow as pa
-import pyarrow.parquet as pq
-
-from possible_futures.evaluation.distances import Distance
-from possible_futures.inference.generations import DRAW_COLUMN, SCHEMA, read_generations
+from possible_futures.datasets.vocabulary import Vocabulary
+from possible_futures.distances import Distance
+from possible_futures.inference.draws import Decoding, PrefixDraws
 
 
-def medoid(draws: Sequence[str], distance: Distance) -> int:
+def medoid_index(draws: Sequence[tuple[int, ...]], *, distance: Distance) -> int:
     """The index of the medoid of the draws: the draw with the lowest mean distance to all of
     them, so the one a forecast collapsed on a single draw should keep to stay closest to the
     rest.
 
     Equal draws are measured once and weighted by how many times they were drawn. Among draws
-    tied for the lowest mean, the first in string order is taken, at its first occurrence.
+    tied for the lowest mean, the lowest in tuple order is taken, at its first occurrence.
     """
-    unique, first, counts = np.unique(
-        np.array(draws, dtype=object), return_index=True, return_counts=True
-    )
-    totals = distance(list(unique)) @ counts  # [U, U] @ [U] -> [U]
-    return int(first[totals.argmin()])
+    counts = Counter(draws)
+    unique = sorted(counts)
+    weights = [counts[suffix] for suffix in unique]
+    totals = distance(left=unique, right=unique) @ weights  # [U, U] @ [U] -> [U]
+    return draws.index(unique[totals.argmin()])
 
 
-def write_medoids(generations: Path, *, path: Path, distance: Distance) -> int:
-    """Write the medoid of the draws of every prefix of a generations file, one row per prefix
-    in the same format.
+def write_medoids(sampled: Path, vocabulary: Vocabulary, *, path: Path, distance: Distance) -> int:
+    """Save to `path` the medoid of the draws of every prefix of a decoding, one draw per prefix.
 
     Args:
-        generations: A file in the `SCHEMA` of `possible_futures.inference.generations`.
+        sampled: The decoding whose draws are collapsed.
+        vocabulary: The vocabulary the decoding was written with.
         path: The Parquet file to write.
         distance: The distance between suffixes the medoid is taken under.
 
     Returns:
         The number of prefixes written.
     """
-    draws = read_generations(generations)
-    rows = [
-        start + medoid(draws.suffixes[start:stop], distance) for start, stop in draws.prefixes()
+    medoids = [
+        PrefixDraws(
+            case_id=prefix.case_id,
+            prefix_length=prefix.prefix_length,
+            draws=[prefix.draws[medoid_index(prefix.draws, distance=distance)]],
+        )
+        for prefix in Decoding.load(sampled, vocabulary).prefixes
     ]
-    medoids = draws.table.take(pa.array(rows, type=pa.int64()))
-    medoids = medoids.set_column(
-        medoids.schema.get_field_index(DRAW_COLUMN),
-        SCHEMA.field(DRAW_COLUMN),
-        pa.array(np.zeros(len(rows), dtype=np.int32)),
-    )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(medoids, path)
-    return len(rows)
+    Decoding(prefixes=medoids).save(path, vocabulary)
+    return len(medoids)

@@ -3,7 +3,7 @@ import pandas as pd
 from possible_futures.logs.keys import ACTIVITY_KEY, CASE_KEY, TIMESTAMP_KEY
 
 
-def case_durations(log: pd.DataFrame) -> pd.Series:
+def case_durations_days(log: pd.DataFrame) -> pd.Series:
     """The duration of every case in days, first event to last, indexed by case."""
     edges = log.groupby(CASE_KEY)[TIMESTAMP_KEY].agg(['min', 'max'])
     return (edges['max'] - edges['min']).dt.total_seconds() / 86_400.0

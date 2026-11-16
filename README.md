@@ -52,18 +52,20 @@ uv run python scripts/baselines.py dataset=sepsis
 uv run python scripts/evaluate.py dataset=sepsis
 ```
 
-Hydra composes the YAML files under `config/` and accepts overrides such as `device=cpu`.
+Hydra composes the YAML files under `config/` and accepts overrides such as `device=cpu` or
+`num_draws=20`. Every script checks its configuration against a schema in
+`src/possible_futures/runs/configs.py`, so a misspelled key fails before the run starts.
 `--multirun dataset=sepsis,bpic12,bpic17,bpic19` runs a stage on every log. Each stage stores its
 resolved configuration in `.hydra/config.yaml` inside its output directory.
 
 | Stage | Writes | What it does |
 | --- | --- | --- |
 | preprocess | `data/<dataset>/processed/` | Drops the cases above the 98.5th percentile of length or the 95th percentile of duration, then every prefix ending less than that duration before the end of the log. Splits the rest out of time and fits the activity vocabulary on train. Writes the length of the longest case kept, which is the most events a drawn suffix holds. |
-| train | `outputs/<dataset>/train/` | Trains for 100 epochs and keeps the final weights, `model.pt`, with the loss of every epoch in `log.csv`. |
+| train | `outputs/<dataset>/train/` | Trains for 100 epochs and keeps the final weights in `model.safetensors`, with the constructor arguments of the model in `arguments.json` and the loss of every epoch in `log.csv`. |
 | generate | `outputs/<dataset>/generate/` | Writes `sampled.parquet`, one row per drawn suffix of every test prefix. |
-| collapse | `outputs/<dataset>/collapse/` | Writes `medoid.parquet`, the medoid of the sampled suffixes of every test prefix. |
+| collapse | `outputs/<dataset>/collapse/` | Writes `medoid.parquet`, the medoid of the sampled suffixes of every test prefix, under the distance set in `config/collapse.yaml`. |
 | baselines | `outputs/<dataset>/baselines/` | Writes `unconditional.parquet`, the suffixes drawn from train for every test prefix. It needs no model. |
-| evaluate | `outputs/<dataset>/evaluate/` | Writes `scores.csv`, the mean DLS and the three energy scores of every decoding. It scores the prefixes in `workers` processes, 8 by default. |
+| evaluate | `outputs/<dataset>/evaluate/` | Writes `scores.csv`, the mean DLS and the three energy scores of every decoding, as listed in `config/evaluate.yaml`. It scores the prefixes in `workers` processes, 8 by default. |
 
 `evaluate` scores every decoding in `outputs/<dataset>/generate/`, `outputs/<dataset>/collapse/`
 and `outputs/<dataset>/baselines/`. A decoding is one Parquet file, named after it.

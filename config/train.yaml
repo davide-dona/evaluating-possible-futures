@@ -1,4 +1,5 @@
 defaults:
+- train_schema
 - output/default
 - dataset: ???
 # A multirun first composes without its sweep values, leaving `dataset` missing. Falling back to

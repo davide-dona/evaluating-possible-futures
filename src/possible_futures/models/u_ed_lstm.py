@@ -1,14 +1,19 @@
+import json
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, NamedTuple, Self
+from typing import NamedTuple, Self
 
 import torch
 import torch.nn.functional as F
+from safetensors.torch import load_file, save_file
 from torch import nn
 
-from possible_futures.datasets.dataset import Batch, Prefixes
+from possible_futures.datasets.batches import PrefixBatch, TrainingBatch
 from possible_futures.datasets.vocabulary import EOS, PAD, UNK
 from possible_futures.models.lstm import GateDropoutStack, GateMasks, LSTMState
+
+_WEIGHTS_FILE = 'model.safetensors'
+_ARGUMENTS_FILE = 'arguments.json'
 
 
 def embedding_dim(num_classes: int) -> int:
@@ -16,12 +21,12 @@ def embedding_dim(num_classes: int) -> int:
     return min(600, round(1.6 * num_classes**0.56))
 
 
-def _classes(activities: torch.Tensor) -> torch.Tensor:
+def _to_classes(activities: torch.Tensor) -> torch.Tensor:
     """The output class of every activity index, UNK and up."""
     return activities - UNK
 
 
-def _activities(classes: torch.Tensor) -> torch.Tensor:
+def _to_activities(classes: torch.Tensor) -> torch.Tensor:
     """The activity index of every output class."""
     return classes + UNK
 
@@ -92,14 +97,17 @@ class UEDLSTM(nn.Module):
         self.mean_head = nn.Linear(in_features=hidden_size, out_features=num_classes)
         self.log_variance_head = nn.Linear(in_features=hidden_size, out_features=num_classes)
 
-    def encode(self, prefixes: Prefixes, *, masks: list[GateMasks]) -> LSTMState:
+    def encode(self, prefixes: PrefixBatch, *, masks: list[GateMasks]) -> LSTMState:
         """Read the real events of prefixes `[B, P]` and return the top layer's final state."""
         inputs = self.encoder_embedding(prefixes.activities)  # [B, P] -> [B, P, D]
         positions = torch.arange(end=inputs.size(dim=1), device=inputs.device)
-        keep = positions.unsqueeze(dim=0) < prefixes.length.unsqueeze(dim=1)  # [B, P]
+        advancing = positions.unsqueeze(dim=0) < prefixes.lengths.unsqueeze(dim=1)  # [B, P]
         zeros = inputs.new_zeros(size=(inputs.size(dim=0), self.encoder.hidden_size))
-        _, states = self.encoder.chained(
-            inputs=inputs, state=(zeros, zeros), masks=masks, keep=keep
+        _, states = self.encoder.forward_chained(
+            inputs=inputs,
+            state=LSTMState(hidden=zeros, cell=zeros),
+            masks=masks,
+            advancing=advancing,
         )
         return states[-1]
 
@@ -117,7 +125,7 @@ class UEDLSTM(nn.Module):
             The logits `[B, C]` of the next event, and each layer's new state.
         """
         inputs = self.decoder_embedding(activities).unsqueeze(dim=1)  # [B] -> [B, 1, D]
-        outputs, states = self.decoder.chained(inputs=inputs, state=encoded, masks=masks)
+        outputs, states = self.decoder.forward_chained(inputs=inputs, state=encoded, masks=masks)
         return self._logits(outputs), states
 
     def decode_step(
@@ -143,7 +151,7 @@ class UEDLSTM(nn.Module):
             mean=self.mean_head(features), log_variance=self.log_variance_head(features)
         )
 
-    def forward(self, batch: Batch, *, forced: Sequence[bool]) -> GaussianLogits:
+    def forward(self, batch: TrainingBatch, *, forced: Sequence[bool]) -> GaussianLogits:
         """Predict the logit distribution of each target position, dropout active.
 
         Args:
@@ -166,7 +174,7 @@ class UEDLSTM(nn.Module):
             if force:
                 inputs = targets[:, position]
             else:
-                inputs = _activities(logits.mean.argmax(dim=-1))
+                inputs = _to_activities(logits.mean.argmax(dim=-1))
             logits, states = self.decode_step(activities=inputs, states=states, masks=masks)
             steps.append(logits)
         return GaussianLogits(
@@ -178,12 +186,12 @@ class UEDLSTM(nn.Module):
         """The cross-entropy of the targets `[B, W]` under logits `[B, W, C]`, averaged over
         `logit_samples` Gaussian logit draws, the positions, and the batch."""
         drawn = logits.draw(samples=self.logit_samples)  # [S, B, W, C]
-        classes = _classes(targets).expand(self.logit_samples, -1, -1)  # [B, W] -> [S, B, W]
+        classes = _to_classes(targets).expand(self.logit_samples, -1, -1)  # [B, W] -> [S, B, W]
         return F.cross_entropy(input=drawn.flatten(end_dim=2), target=classes.flatten())
 
     @torch.no_grad()
-    def sample(self, prefixes: Prefixes, *, num_samples: int, max_steps: int) -> torch.Tensor:
-        """Draw `num_samples` suffixes per prefix.
+    def sample(self, prefixes: PrefixBatch, *, num_draws: int, max_steps: int) -> torch.Tensor:
+        """Draw `num_draws` suffixes per prefix.
 
         Each draw encodes its prefix under its own dropout masks, and at every step draws new
         decoder masks, Gaussian logits around the means, and an activity from their softmax.
@@ -191,9 +199,9 @@ class UEDLSTM(nn.Module):
         Returns:
             The activity indices `[B, S, L]`, PAD past each draw's end.
         """
-        batch_size = prefixes.length.size(dim=0)
-        rows, device = batch_size * num_samples, prefixes.length.device
-        prefixes = prefixes.repeat_interleave(num_samples)
+        batch_size = prefixes.lengths.size(dim=0)
+        rows, device = batch_size * num_draws, prefixes.lengths.device
+        prefixes = prefixes.repeat_interleave(num_draws)
         encoded = self.encode(prefixes, masks=self.encoder.sample_masks(rows))
         inputs = prefixes.last_events()
         activities = torch.full(size=(rows, max_steps), fill_value=PAD, device=device)
@@ -208,25 +216,29 @@ class UEDLSTM(nn.Module):
                 logits, states = self.decode_step(activities=inputs, states=states, masks=masks)
             drawn = logits.draw(samples=1).squeeze(dim=0)  # [1, B, C] -> [B, C]
             classes = torch.multinomial(input=drawn.softmax(dim=-1), num_samples=1)
-            emitted = _activities(classes.squeeze(dim=1))  # [B, 1] -> [B]
+            emitted = _to_activities(classes.squeeze(dim=1))  # [B, 1] -> [B]
             continuing = (emitted != EOS).nonzero().squeeze(dim=1)
             live, inputs = live[continuing], emitted[continuing]
             activities[live, position] = inputs
-            states = [(hidden[continuing], cell[continuing]) for hidden, cell in states]
+            states = [
+                LSTMState(hidden=hidden[continuing], cell=cell[continuing])
+                for hidden, cell in states
+            ]
             if len(live) == 0:
                 break
         width = int((activities != PAD).sum(dim=1).max())
-        return activities[:, :width].view(batch_size, num_samples, width)  # [B * S, L] -> [B, S, L]
+        # [B * S, L] -> [B, S, L]
+        return activities[:, :width].view(batch_size, num_draws, width)
 
-    def save(self, path: Path) -> None:
-        """Write the weights and the constructor arguments."""
-        path.parent.mkdir(parents=True, exist_ok=True)
-        torch.save({'arguments': self.arguments, 'state_dict': self.state_dict()}, path)
+    def save(self, directory: Path) -> None:
+        """Write the weights and the constructor arguments into `directory`."""
+        directory.mkdir(parents=True, exist_ok=True)
+        save_file(self.state_dict(), directory / _WEIGHTS_FILE)
+        (directory / _ARGUMENTS_FILE).write_text(json.dumps(self.arguments, indent=2) + '\n')
 
     @classmethod
-    def load(cls, path: Path, *, device: torch.device) -> Self:
+    def load(cls, directory: Path, *, device: torch.device) -> Self:
         """Rebuild a model written by `save`."""
-        checkpoint: dict[str, Any] = torch.load(path, map_location=device)
-        model = cls(**checkpoint['arguments'])
-        model.load_state_dict(checkpoint['state_dict'])
+        model = cls(**json.loads((directory / _ARGUMENTS_FILE).read_text()))
+        model.load_state_dict(load_file(directory / _WEIGHTS_FILE, device=str(device)))
         return model.to(device).eval()

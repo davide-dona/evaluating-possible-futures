@@ -1,4 +1,8 @@
 defaults:
+- collapse_schema
 - output/default
 - dataset: ???
 - _self_
+# The distance the medoid of the draws of a prefix is taken under.
+distance:
+  _target_: possible_futures.distances.NormalizedDamerauLevenshtein

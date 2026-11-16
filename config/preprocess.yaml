@@ -1,4 +1,5 @@
 defaults:
+- preprocess_schema
 - output/default
 - dataset: ???
 - _self_
