@@ -11,16 +11,17 @@ from possible_futures.models.u_ed_lstm import UEDLSTM
 
 @dataclass(slots=True)
 class TeacherForcing:
-    """A teacher forcing probability that starts at `start` and is multiplied by `decay` every
-    `every` epochs."""
+    """A teacher forcing probability that falls in a straight line from `start` to `end` over the
+    first `fraction` of the epochs, then stays at `end`."""
 
     start: float
-    decay: float
-    every: int
+    end: float
+    fraction: float
 
-    def ratio(self, epoch: int) -> float:
-        """The probability of the 0-indexed `epoch`."""
-        return self.start * self.decay ** (epoch // self.every)
+    def ratio(self, epoch: int, epochs: int) -> float:
+        """The probability of the 0-indexed `epoch` out of `epochs`."""
+        progress = epoch / (self.fraction * epochs)
+        return max(self.end, self.start - (self.start - self.end) * progress)
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,7 +65,7 @@ def train(
     """
     for epoch in range(epochs):
         started = time.perf_counter()
-        ratio = teacher_forcing.ratio(epoch)
+        ratio = teacher_forcing.ratio(epoch=epoch, epochs=epochs)
         total, rows = 0.0, 0
         for batch in train_log.training_batches(batch_size=batch_size, window=window, rng=rng):
             batch = batch.to(device)
