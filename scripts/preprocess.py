@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 from hydra.core.config_store import ConfigStore
 
-from possible_futures.datasets.encoded_log import EncodedLog
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.logs.io import read_original_log, write_max_case_length, write_split
 from possible_futures.logs.keys import ACTIVITY_KEY, CASE_KEY
@@ -13,7 +12,12 @@ from possible_futures.logs.preprocessing import (
     out_of_time_split,
     sort_log,
 )
-from possible_futures.logs.statistics import case_durations_days, case_lengths, num_variants
+from possible_futures.logs.statistics import (
+    case_durations_days,
+    case_lengths,
+    num_prefixes,
+    num_variants,
+)
 from possible_futures.runs.configs import PreprocessConfig
 from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import (
@@ -76,9 +80,7 @@ def main(config: PreprocessConfig) -> None:
         vocabulary.save(vocabulary_file(data.name))
         write_max_case_length(max_length, max_case_length_file(data.name))
 
-    summary = pd.DataFrame(
-        {'train': _describe(train, vocabulary), 'test': _describe(test, vocabulary)}
-    ).T
+    summary = pd.DataFrame({'train': _describe(train), 'test': _describe(test)}).T
     print(
         f'\nPreprocessed "{data.name}": {len(vocabulary.activities)} train activities, cases of '
         f'at most {max_length} events and {max_duration_days:,.1f} days\n'
@@ -88,14 +90,13 @@ def main(config: PreprocessConfig) -> None:
     )
 
 
-def _describe(split: pd.DataFrame, vocabulary: Vocabulary) -> dict[str, str]:
+def _describe(split: pd.DataFrame) -> dict[str, str]:
     """The size of a split and the shape of its cases, formatted for printing."""
     lengths = case_lengths(split)
-    num_prefixes = len(EncodedLog.from_split(split, vocabulary).cuts().case_indices)
     return {
         'cases': f'{len(lengths):,}',
         'events': f'{len(split):,}',
-        'prefixes': f'{num_prefixes:,}',
+        'prefixes': f'{num_prefixes(split):,}',
         'variants': f'{num_variants(split):,}',
         'activities': f'{split[ACTIVITY_KEY].nunique()}',
         'case length': f'{lengths.mean():.1f} ± {lengths.std():.1f}',

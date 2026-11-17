@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from possible_futures.logs.keys import ACTIVITY_KEY
-from possible_futures.logs.statistics import case_durations_days, case_lengths, num_variants
+from possible_futures.logs.statistics import case_lengths, num_prefixes, num_variants
 
 DECIMALS = 3
 
@@ -69,25 +69,28 @@ def scores_table(
     return '\n'.join(lines)
 
 
-def properties_table(logs: Mapping[str, pd.DataFrame]) -> str:
+def properties_table(splits: Mapping[str, tuple[pd.DataFrame, pd.DataFrame]]) -> str:
     """A booktabs `tabular` describing every log: its cases, events, variants and activities,
-    and the mean and standard deviation of its case length in events and duration in days.
+    the mean and standard deviation of its case length in events, and the number of prefixes of
+    its test split, which every mean score is taken over.
 
     Args:
-        logs: The preprocessed logs, keyed by the name the table prints.
+        splits: The train and test splits of every preprocessed log, as read by `read_split`,
+            keyed by the name the table prints.
 
     Returns:
         The table, to `\\input` inside a `table` environment.
     """
     lines = [
-        r'\begin{tabular}{@{}lrrrrD{+}{\,\pm\,}{-1}D{+}{\,\pm\,}{-1}@{}}',
+        r'\begin{tabular}{@{}lrrrrD{+}{\,\pm\,}{-1}r@{}}',
         r'\toprule',
         r'Event log & Cases & Events & Variants & Activities & \multicolumn{1}{c}{Case length}'
-        r' & \multicolumn{1}{c}{Case duration} \\',
+        r' & Test prefixes \\',
         r'\midrule',
     ]
-    for name, log in logs.items():
-        lengths, durations = case_lengths(log), case_durations_days(log)
+    for name, (train, test) in splits.items():
+        log = pd.concat([train, test], ignore_index=True)
+        lengths = case_lengths(log)
         cells = [
             name,
             _grouped_digits(len(lengths)),
@@ -95,7 +98,7 @@ def properties_table(logs: Mapping[str, pd.DataFrame]) -> str:
             _grouped_digits(num_variants(log)),
             _grouped_digits(log[ACTIVITY_KEY].nunique()),
             f'{lengths.mean():.1f}+{lengths.std():.1f}',
-            f'{durations.mean():.2f}+{durations.std():.2f}',
+            _grouped_digits(num_prefixes(test)),
         ]
         lines.append(' & '.join(cells) + r' \\')
     lines += [r'\bottomrule', r'\end{tabular}', '']

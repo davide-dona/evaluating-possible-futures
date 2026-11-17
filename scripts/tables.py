@@ -1,5 +1,4 @@
 import hydra
-import pandas as pd
 from hydra.core.config_store import ConfigStore
 
 from possible_futures.evaluation.scoring import MeanScores
@@ -39,13 +38,14 @@ def main(config: TablesConfig) -> None:
             path.write_text(scores_table(means, decodings=decodings, metrics=metrics))
     path = output / 'properties.tex'
     with step(f'Writing {path}'):
-        logs = {
-            config.datasets[dataset]: pd.concat(
-                [read_split(split_file(dataset, split)) for split in Split], ignore_index=True
+        splits = {
+            config.datasets[dataset]: (
+                read_split(split_file(dataset, Split.TRAIN)),
+                read_split(split_file(dataset, Split.TEST)),
             )
             for dataset in config.properties
         }
-        path.write_text(properties_table(logs))
+        path.write_text(properties_table(splits))
 
 
 if __name__ == '__main__':
