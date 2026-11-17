@@ -1,13 +1,17 @@
+from dataclasses import dataclass, field
+from typing import Any
+
 import hydra
 import pandas as pd
 from hydra.core.config_store import ConfigStore
 from hydra.utils import instantiate
+from omegaconf import MISSING
 
+from possible_futures.datasets.cases import Cases
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.evaluation.scoring import MeanScores, observed_suffixes, score_prefixes
 from possible_futures.inference.draws import Decoding
-from possible_futures.logs.io import read_split
-from possible_futures.runs.configs import EvaluateConfig
+from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import (
     Split,
@@ -18,13 +22,21 @@ from possible_futures.runs.paths import (
     vocabulary_file,
 )
 
+
+@dataclass
+class EvaluateConfig:
+    data: DataConfig = MISSING
+    workers: int = MISSING
+    # The `Metric` of every column of the scores, built with `hydra.utils.instantiate`.
+    metrics: dict[str, Any] = field(default_factory=dict)
+
+
 ConfigStore.instance().store(name='evaluate_schema', node=EvaluateConfig)
 
 
 @hydra.main(version_base='1.3', config_path='../config', config_name='evaluate')
 def main(config: EvaluateConfig) -> None:
-    """Score the suffixes of every test prefix in each file of the generate, collapse, and
-    baselines stages, and write the mean scores of every decoding."""
+    """Score every decoding against the test suffixes and write their mean scores."""
     name = config.data.name
     decoding_files = [
         path
@@ -43,7 +55,7 @@ def main(config: EvaluateConfig) -> None:
         },
     )
     vocabulary = Vocabulary.load(vocabulary_file(name))
-    test = read_split(split_file(name, Split.TEST))
+    test = Cases.load(split_file(name, Split.TEST))
     means = {}
     for path in decoding_files:
         with step(f'Scoring the {path.stem} suffixes'):
@@ -52,7 +64,7 @@ def main(config: EvaluateConfig) -> None:
             per_prefix = score_prefixes(
                 prefixes, observed=observed, metrics=metrics, workers=config.workers
             )
-            means[path.stem] = per_prefix[list(metrics)].mean()
+            means[path.stem] = per_prefix.mean()
     scores = MeanScores(table=pd.DataFrame.from_dict(means, orient='index'))
     scores.save(output)
     print(f'Wrote the mean scores to {output}\n\n{scores.table.round(4).to_string()}')

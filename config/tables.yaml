@@ -8,7 +8,7 @@ hydra:
     dir: outputs/tables
   job:
     chdir: false
-# The name the paper prints for every dataset.
+# The name the tables print for every dataset.
 datasets:
   sepsis: Sepsis
   bpic12: BPIC12
@@ -26,7 +26,7 @@ scores:
     decodings: [oracle_sampled, oracle_greedy, markov_sampled, markov_greedy]
 # The rows of the table of the properties of the preprocessed logs, in this order.
 properties: [sepsis, bpic12, bpic17, bpic19, synthetic]
-# The macro of the paper's preamble that prints every decoding.
+# The LaTeX macro that prints every decoding.
 decodings:
   sampled: \Sampled
   medoid: \Medoid
@@ -36,7 +36,7 @@ decodings:
   markov_sampled: \MarkovSampled
   markov_greedy: \MarkovGreedy
 # The columns of every table of scores, keyed by their column in scores.csv and in the order
-# printed, each with its header in the paper's macros and whether a higher mean is better.
+# printed, each with its LaTeX header and whether a higher mean is better.
 metrics:
   DLS:
     header: $\meanDLS$~$\uparrow$

@@ -20,11 +20,7 @@ class GateMasks(NamedTuple):
 
 
 class GateDropoutLSTMLayer(nn.Module):
-    """LSTM layer with variational dropout on each gate's input and hidden state.
-
-    The masks are passed in rather than drawn here, so the caller decides how long a mask lives:
-    one pass in training, one draw for the encoder, one step for the decoder in sampling.
-    """
+    """LSTM layer with variational dropout on each gate's input and hidden state."""
 
     def __init__(self, *, input_size: int, hidden_size: int, dropout: float) -> None:
         """
@@ -123,7 +119,6 @@ class GateDropoutStack(nn.Module):
         Args:
             input_size: Width of the bottom layer's inputs.
             hidden_size: Width of every layer's states.
-            num_layers: Number of layers.
             dropout: Probability of dropping a gate input or hidden feature.
         """
         super().__init__()

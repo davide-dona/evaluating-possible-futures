@@ -1,27 +1,38 @@
+from dataclasses import dataclass
+
 import hydra
 import numpy as np
+import torch
 from hydra.core.config_store import ConfigStore
+from omegaconf import MISSING
 
+from possible_futures.datasets.cases import Cases
 from possible_futures.datasets.encoded_log import EncodedLog
 from possible_futures.datasets.vocabulary import Vocabulary
-from possible_futures.inference.baselines import (
-    write_greedy_process_draws,
-    write_sampled_process_draws,
-    write_unconditional_draws,
-)
-from possible_futures.logs.io import read_max_case_length, read_split
-from possible_futures.processes.markov import MarkovChain
-from possible_futures.processes.synthetic import SyntheticProcess
-from possible_futures.runs.configs import BaselinesConfig
+from possible_futures.inference.decode import write_draws
+from possible_futures.models.empirical import EmpiricalSuffixes
+from possible_futures.models.markov import MarkovChain
+from possible_futures.models.process import GreedyProcessDecoder, ProcessSampler
+from possible_futures.models.sampler import SuffixSampler
+from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import (
     Split,
     Stage,
-    max_case_length_file,
     split_file,
     stage_dir,
     vocabulary_file,
 )
+from possible_futures.synthetic import SyntheticProcess
+
+
+@dataclass
+class BaselinesConfig:
+    data: DataConfig = MISSING
+    seed: int = MISSING
+    num_draws: int = MISSING
+    max_rows: int = MISSING
+
 
 ConfigStore.instance().store(name='baselines_schema', node=BaselinesConfig)
 
@@ -30,10 +41,8 @@ ConfigStore.instance().store(name='baselines_schema', node=BaselinesConfig)
 def main(config: BaselinesConfig) -> None:
     """Write the decodings that need no trained model.
 
-    Every dataset gets the unconditional decoding, drawn from the train split whatever the
-    prefix. A dataset simulated from a known process also gets the sampled and greedy decodings
-    of that process, as `oracle`, and of a first-order Markov chain fitted on the train split,
-    as `markov`.
+    Every dataset gets the unconditional decoding. A simulated dataset also gets the sampled and
+    greedy decodings of its true process, as `oracle`, and of a fitted Markov chain, as `markov`.
     """
     name = config.data.name
     output = stage_dir(name, Stage.BASELINES)
@@ -54,52 +63,48 @@ def main(config: BaselinesConfig) -> None:
     )
     with step('Encoding the train and test splits'):
         vocabulary = Vocabulary.load(vocabulary_file(name))
-        train = read_split(split_file(name, Split.TRAIN))
-        train_log = EncodedLog.from_split(train, vocabulary)
-        test_log = EncodedLog.from_split(read_split(split_file(name, Split.TEST)), vocabulary)
+        train = Cases.load(split_file(name, Split.TRAIN))
+        test = Cases.load(split_file(name, Split.TEST))
+        train_log = EncodedLog.from_cases(train, vocabulary)
+        test_log = EncodedLog.from_cases(test, vocabulary)
+
+    def write(sampler_name: str, sampler: SuffixSampler, *, num_draws: int) -> None:
+        path = output / f'{sampler_name}.parquet'
+        with step(f'Writing {sampler_name} suffixes to {path}'):
+            num_prefixes = write_draws(
+                sampler,
+                test_log=test_log,
+                vocabulary=vocabulary,
+                path=path,
+                num_draws=num_draws,
+                max_steps=int(train.case_lengths.max()),
+                max_rows=config.max_rows,
+                device=torch.device('cpu'),
+            )
+            print(f'  {num_prefixes:,} prefixes', flush=True)
 
     rng = np.random.default_rng(config.seed)
     if simulated:
-        max_steps = read_max_case_length(max_case_length_file(name))
         processes = {
             'oracle': SyntheticProcess(**config.data.process),
-            'markov': MarkovChain.fit(train),
+            'markov': MarkovChain.fit(train.traces),
         }
         for process_name, process in processes.items():
-            path = output / f'{process_name}_sampled.parquet'
-            with step(f'Writing {process_name}_sampled suffixes to {path}'):
-                num_prefixes = write_sampled_process_draws(
-                    process,
-                    test_log=test_log,
-                    vocabulary=vocabulary,
-                    path=path,
-                    num_draws=config.num_draws,
-                    max_steps=max_steps,
-                    rng=rng,
-                )
-                print(f'  {num_prefixes:,} prefixes', flush=True)
-            path = output / f'{process_name}_greedy.parquet'
-            with step(f'Writing {process_name}_greedy suffixes to {path}'):
-                num_prefixes = write_greedy_process_draws(
-                    process,
-                    test_log=test_log,
-                    vocabulary=vocabulary,
-                    path=path,
-                    max_steps=max_steps,
-                )
-                print(f'  {num_prefixes:,} prefixes', flush=True)
-
-    path = output / 'unconditional.parquet'
-    with step(f'Writing unconditional suffixes to {path}'):
-        num_prefixes = write_unconditional_draws(
-            train_log,
-            test_log=test_log,
-            vocabulary=vocabulary,
-            path=path,
-            num_draws=config.num_draws,
-            rng=rng,
-        )
-        print(f'  {num_prefixes:,} prefixes', flush=True)
+            write(
+                f'{process_name}_sampled',
+                ProcessSampler(process=process, vocabulary=vocabulary, rng=rng),
+                num_draws=config.num_draws,
+            )
+            write(
+                f'{process_name}_greedy',
+                GreedyProcessDecoder(process=process, vocabulary=vocabulary),
+                num_draws=1,
+            )
+    write(
+        'unconditional',
+        EmpiricalSuffixes(train_log=train_log, rng=rng),
+        num_draws=config.num_draws,
+    )
 
 
 if __name__ == '__main__':

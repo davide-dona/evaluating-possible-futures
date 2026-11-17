@@ -1,9 +1,9 @@
 # @package _global_
 data:
   name: synthetic
-  case_key: case:concept:name
-  activity_key: concept:name
-  timestamp_key: time:timestamp
+  case_key: case
+  activity_key: activity
+  timestamp_key: timestamp
   separator: ','
   test_fraction: 0.2
   # Every case holds 5 events and lasts 4 hours, so no case is an outlier.

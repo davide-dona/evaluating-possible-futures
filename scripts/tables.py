@@ -1,24 +1,46 @@
+from dataclasses import dataclass
+
 import hydra
 from hydra.core.config_store import ConfigStore
+from omegaconf import MISSING
 
+from possible_futures.datasets.cases import Cases, TrainTestSplit
 from possible_futures.evaluation.scoring import MeanScores
-from possible_futures.logs.io import read_split
-from possible_futures.runs.configs import TablesConfig
 from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import OUTPUTS, Split, scores_file, split_file
 from possible_futures.tables import MetricColumn, properties_table, scores_table
+
+
+@dataclass
+class ScoresTableConfig:
+    datasets: list[str] = MISSING
+    decodings: list[str] = MISSING
+
+
+@dataclass
+class MetricColumnConfig:
+    header: str = MISSING
+    higher_is_better: bool = MISSING
+
+
+@dataclass
+class TablesConfig:
+    datasets: dict[str, str] = MISSING
+    scores: dict[str, ScoresTableConfig] = MISSING
+    properties: list[str] = MISSING
+    decodings: dict[str, str] = MISSING
+    metrics: dict[str, MetricColumnConfig] = MISSING
+
 
 ConfigStore.instance().store(name='tables_schema', node=TablesConfig)
 
 
 @hydra.main(version_base='1.3', config_path='../config', config_name='tables')
 def main(config: TablesConfig) -> None:
-    """Write the LaTeX tables of the paper: one per entry of `config.scores`, holding the mean
-    scores of its decodings on its datasets, and `properties.tex`, describing the preprocessed
-    logs."""
+    """Write a LaTeX table of mean scores per entry of `config.scores`, and one of the logs."""
     output = OUTPUTS / 'tables'
     banner(
-        'Writing the tables of the paper',
+        'Writing the LaTeX tables',
         {name: ', '.join(table.datasets) for name, table in config.scores.items()}
         | {'properties': ', '.join(config.properties), 'output': output},
     )
@@ -39,9 +61,9 @@ def main(config: TablesConfig) -> None:
     path = output / 'properties.tex'
     with step(f'Writing {path}'):
         splits = {
-            config.datasets[dataset]: (
-                read_split(split_file(dataset, Split.TRAIN)),
-                read_split(split_file(dataset, Split.TEST)),
+            config.datasets[dataset]: TrainTestSplit(
+                train=Cases.load(split_file(dataset, Split.TRAIN)),
+                test=Cases.load(split_file(dataset, Split.TEST)),
             )
             for dataset in config.properties
         }

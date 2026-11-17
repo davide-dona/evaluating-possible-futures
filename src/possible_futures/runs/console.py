@@ -4,13 +4,7 @@ from contextlib import contextmanager
 
 
 def format_duration(seconds: float) -> str:
-    """Format an elapsed time for a person reading a log.
-
-    Args:
-        seconds: How long something took.
-    Returns:
-        The time as `4.2s`, `3m 12s` or `1h 05m`, whichever fits it.
-    """
+    """Format a duration as `4.2s`, `3m 12s` or `1h 05m`, whichever fits it."""
     if seconds < 60:
         return f'{seconds:.1f}s'
     minutes, seconds = divmod(int(seconds), 60)
@@ -21,13 +15,7 @@ def format_duration(seconds: float) -> str:
 
 
 def banner(title: str, fields: Mapping[str, object]) -> None:
-    """Announce what a stage is about to do, before the first step of it runs.
-
-    Args:
-        title: What the stage does, e.g. `Generating suffixes`.
-        fields: The settings the run is about to work under, one indented line each, in the order
-            given. Names are padded to a common width so the values line up.
-    """
+    """Print the title of a stage and its settings, one aligned line each."""
     print(title, flush=True)
     width = max((len(name) for name in fields), default=0)
     for name, value in fields.items():
@@ -37,14 +25,7 @@ def banner(title: str, fields: Mapping[str, object]) -> None:
 
 @contextmanager
 def step(message: str) -> Iterator[None]:
-    """Say that a step has started, then how long it took.
-
-    Args:
-        message: What the step does, e.g. `Loading the test split`. Printed with an ellipsis
-            before the block runs, so a step that takes minutes has already named itself.
-    Yields:
-        Nothing: the step is the block itself.
-    """
+    """Print `message` before the block runs, then how long the block took."""
     print(f'{message}...', flush=True)
     started = time.perf_counter()
     yield

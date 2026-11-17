@@ -53,14 +53,9 @@ def train(
     Args:
         model: The model, on `device`.
         optimizer: Steps the parameters of `model`.
-        train_log: The train split.
-        epochs: Passes over the training cuts.
         batch_size: Cuts per optimizer step.
         window: Events after the prefix each cut targets.
         weight_penalty: Weight of the sum of squared parameters in the loss.
-        grad_clip_norm: The norm the gradient is clipped to.
-        teacher_forcing: The teacher forcing probability of every epoch.
-        device: Where batches go.
         rng: Shuffles the training cuts and flips the teacher forcing coins.
     """
     for epoch in range(epochs):

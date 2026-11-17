@@ -6,7 +6,7 @@ import torch
 class PrefixBatch(NamedTuple):
     """Prefixes padded to the longest of them, PAD past each one's length."""
 
-    activities: torch.Tensor  # int64, [B, P]
+    tokens: torch.Tensor  # int64, [B, P]
     lengths: torch.Tensor  # int64, [B]
 
     def to(self, device: torch.device) -> 'PrefixBatch':
@@ -19,7 +19,7 @@ class PrefixBatch(NamedTuple):
     def last_events(self) -> torch.Tensor:
         """The last real event of every prefix, `[B, P] -> [B]`."""
         index = (self.lengths - 1).unsqueeze(dim=1)  # [B] -> [B, 1]
-        return self.activities.gather(dim=1, index=index).squeeze(dim=1)
+        return self.tokens.gather(dim=1, index=index).squeeze(dim=1)
 
 
 class TrainingBatch(NamedTuple):

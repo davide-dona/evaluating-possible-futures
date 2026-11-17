@@ -1,18 +1,52 @@
+from dataclasses import dataclass
+from typing import Any
+
 import hydra
 import numpy as np
 import torch
 from hydra.core.config_store import ConfigStore
 from hydra.utils import instantiate
-from omegaconf import OmegaConf
+from omegaconf import MISSING, OmegaConf
 
+from possible_futures.datasets.cases import Cases
 from possible_futures.datasets.encoded_log import EncodedLog
 from possible_futures.datasets.vocabulary import Vocabulary
-from possible_futures.logs.io import read_split
 from possible_futures.models.u_ed_lstm import UEDLSTM
-from possible_futures.runs.configs import TrainConfig
+from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, format_duration, step
 from possible_futures.runs.paths import Split, model_dir, split_file, vocabulary_file
-from possible_futures.training.train import train
+from possible_futures.training.train import TeacherForcing, train
+
+
+@dataclass
+class ModelConfig:
+    num_layers: int = MISSING
+    hidden_size: int = MISSING
+    dropout: float = MISSING
+    logit_samples: int = MISSING
+
+
+@dataclass
+class TrainingConfig:
+    epochs: int = MISSING
+    batch_size: int = MISSING
+    window: int = MISSING
+    weight_penalty: float = MISSING
+    grad_clip_norm: float = MISSING
+    teacher_forcing: TeacherForcing = MISSING
+
+
+@dataclass
+class TrainConfig:
+    data: DataConfig = MISSING
+    seed: int = MISSING
+    device: str = MISSING
+    model: ModelConfig = MISSING
+    # A partial `torch.optim.Optimizer`, built with `hydra.utils.instantiate` and given the
+    # parameters of the model.
+    optimizer: Any = MISSING
+    training: TrainingConfig = MISSING
+
 
 ConfigStore.instance().store(name='train_schema', node=TrainConfig)
 
@@ -37,7 +71,7 @@ def main(config: TrainConfig) -> None:
     )
     with step('Encoding the train split'):
         vocabulary = Vocabulary.load(vocabulary_file(name))
-        train_log = EncodedLog.from_split(read_split(split_file(name, Split.TRAIN)), vocabulary)
+        train_log = EncodedLog.from_cases(Cases.load(split_file(name, Split.TRAIN)), vocabulary)
 
     model = UEDLSTM(vocabulary_size=vocabulary.size, **config.model).to(device)
     print(f'{sum(p.numel() for p in model.parameters()):,} parameters', flush=True)

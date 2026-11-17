@@ -1,22 +1,28 @@
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import ClassVar, NamedTuple
 
 import numpy as np
 import pandas as pd
 
-from possible_futures.logs.keys import ACTIVITY_KEY, CASE_KEY, TIMESTAMP_KEY
-from possible_futures.processes.decoding import END, Process
+from possible_futures.models.process import END, Process
 
 # When the first simulated case starts.
 _ORIGIN = pd.Timestamp('2026-01-01')
+
+
+class SimulatedEvents(NamedTuple):
+    """The events of a simulated log, in case order."""
+
+    case_ids: list[str]
+    activities: list[str]
+    timestamps: list[pd.Timestamp]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class SyntheticProcess(Process):
     """A, then B or C, then D, then E or F, then G.
 
-    The choice between E and F depends on whether the case went through B or C, which D hides
-    from a first-order Markov chain.
+    The choice between E and F depends on whether the case went through B or C.
 
     Attributes:
         p_b: Probability of B after A.
@@ -40,6 +46,7 @@ class SyntheticProcess(Process):
         return f'P(B | A) = {self.p_b}, P(E | B, D) = {self.q_b}, P(E | C, D) = {self.q_c}'
 
     def next_activity_probabilities(self, prefix: tuple[str, ...]) -> dict[str, float]:
+        """Return the true probabilities of the next activity after `prefix`."""
         match prefix:
             case ():
                 return {'A': 1.0}
@@ -55,20 +62,20 @@ class SyntheticProcess(Process):
             case _:
                 return {END: 1.0}
 
-    def simulate_log(self, *, num_cases: int, rng: np.random.Generator) -> pd.DataFrame:
-        """Draw a log of `num_cases` cases from the process.
-
-        Cases arrive as a Poisson process of one case per hour on average, and the events of a
-        case are one hour apart.
-
-        Returns:
-            One row per event with the case, the activity, and the timestamp, in case order.
-        """
+    def simulate(self, *, num_cases: int, rng: np.random.Generator) -> SimulatedEvents:
+        """Draw the events of `num_cases` cases from the process."""
+        # Simulate trace arrival times as a Poisson process
         arrivals = np.cumsum(rng.exponential(1.0, size=num_cases))
         case_starts = _ORIGIN + pd.to_timedelta(arrivals, unit='h')
-        rows = []
+
+        # Simulate the events of every case
+        events = SimulatedEvents(case_ids=[], activities=[], timestamps=[])
         for number, start in enumerate(case_starts):
+            # Simulate the trace of the case
             trace = self.sample_suffix((), rng=rng, max_steps=self.CASE_LENGTH)
+            # Assign case id and timestamps to every event of the trace
             for position, activity in enumerate(trace):
-                rows.append((f'case-{number:05d}', activity, start + pd.Timedelta(hours=position)))
-        return pd.DataFrame(rows, columns=[CASE_KEY, ACTIVITY_KEY, TIMESTAMP_KEY])
+                events.case_ids.append(f'case-{number:05d}')
+                events.activities.append(activity)
+                events.timestamps.append(start + pd.Timedelta(hours=position))
+        return events

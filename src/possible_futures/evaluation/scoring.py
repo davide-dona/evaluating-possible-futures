@@ -8,24 +8,20 @@ from typing import ClassVar, Self
 import pandas as pd
 import torch
 
+from possible_futures.datasets.cases import Cases
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.evaluation.metrics import Metric
-from possible_futures.inference.draws import CASE_ID_COLUMN, PREFIX_LENGTH_COLUMN, PrefixDraws
-from possible_futures.logs.keys import ACTIVITY_KEY, CASE_KEY
+from possible_futures.inference.draws import PrefixDraws
 
 
 def observed_suffixes(
-    prefixes: Sequence[PrefixDraws], test: pd.DataFrame, vocabulary: Vocabulary
+    prefixes: Sequence[PrefixDraws], test: Cases, vocabulary: Vocabulary
 ) -> list[tuple[int, ...]]:
-    """The observed suffix of every prefix, as vocabulary indices.
-
-    Args:
-        prefixes: The prefixes, cut from the test split.
-        test: The test split, read by `read_split`.
-        vocabulary: The vocabulary the draws were written with.
-    """
-    activities = pd.Series(vocabulary.encode(test[ACTIVITY_KEY]), index=test.index)
-    traces = activities.groupby(test[CASE_KEY], sort=False).agg(tuple)
+    """The observed suffix of every prefix in the test cases, as tokens."""
+    traces = {
+        case_id: tuple(vocabulary.encode(trace).tolist())
+        for case_id, trace in zip(test.case_ids, test.traces, strict=True)
+    }
     return [traces[prefix.case_id][prefix.prefix_length :] for prefix in prefixes]
 
 
@@ -39,21 +35,14 @@ def score_prefixes(
     """Score the draws of every prefix against its observed suffix under every metric.
 
     Args:
-        prefixes: The draws of every prefix.
-        observed: The observed suffix of every prefix, by `observed_suffixes`.
         metrics: The metrics, keyed by the column they are written to. Each must pickle, to
             reach the worker processes.
         workers: Processes scoring the prefixes in parallel.
 
     Returns:
-        One row per prefix: its case id, its length, and its score under every metric.
+        One row per prefix, in the order of `prefixes`, with its score under every metric.
     """
-    scores = pd.DataFrame(
-        {
-            CASE_ID_COLUMN: [prefix.case_id for prefix in prefixes],
-            PREFIX_LENGTH_COLUMN: [prefix.prefix_length for prefix in prefixes],
-        }
-    )
+    scores = pd.DataFrame(index=range(len(prefixes)))
     draws = [prefix.draws for prefix in prefixes]
     chunksize = max(1, len(prefixes) // (16 * workers))
     # One torch thread per process, so the processes do not oversubscribe the cores.

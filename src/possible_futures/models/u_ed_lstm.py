@@ -9,8 +9,9 @@ from safetensors.torch import load_file, save_file
 from torch import nn
 
 from possible_futures.datasets.batches import PrefixBatch, TrainingBatch
-from possible_futures.datasets.vocabulary import EOS, PAD, UNK
+from possible_futures.datasets.vocabulary import SpecialToken
 from possible_futures.models.lstm import GateDropoutStack, GateMasks, LSTMState
+from possible_futures.models.sampler import SuffixSampler
 
 _WEIGHTS_FILE = 'model.safetensors'
 _ARGUMENTS_FILE = 'arguments.json'
@@ -21,14 +22,14 @@ def embedding_dim(num_classes: int) -> int:
     return min(600, round(1.6 * num_classes**0.56))
 
 
-def _to_classes(activities: torch.Tensor) -> torch.Tensor:
-    """The output class of every activity index, UNK and up."""
-    return activities - UNK
+def _to_classes(tokens: torch.Tensor) -> torch.Tensor:
+    """The output class of every token, UNK and up."""
+    return tokens - SpecialToken.UNK
 
 
-def _to_activities(classes: torch.Tensor) -> torch.Tensor:
-    """The activity index of every output class."""
-    return classes + UNK
+def _to_tokens(classes: torch.Tensor) -> torch.Tensor:
+    """The token of every output class."""
+    return classes + SpecialToken.UNK
 
 
 class GaussianLogits(NamedTuple):
@@ -51,7 +52,7 @@ class Loss(NamedTuple):
     penalty: float
 
 
-class UEDLSTM(nn.Module):
+class UEDLSTM(nn.Module, SuffixSampler):
     """Activity-only U-ED-LSTM: an encoder-decoder LSTM with Gaussian activity logits and
     variational dropout kept active in sampling.
 
@@ -72,8 +73,8 @@ class UEDLSTM(nn.Module):
     ) -> None:
         """
         Args:
-            vocabulary_size: Number of input indices, special ones included. The output classes
-                are the indices from UNK on.
+            vocabulary_size: Number of tokens, special tokens included. The output classes are the
+                tokens from UNK on.
             num_layers: Layers of the encoder and of the decoder.
             hidden_size: Width of every LSTM state.
             dropout: Probability of dropping a gate input or hidden feature.
@@ -88,13 +89,13 @@ class UEDLSTM(nn.Module):
             'logit_samples': logit_samples,
         }
         self.logit_samples = logit_samples
-        num_classes = vocabulary_size - UNK
+        num_classes = vocabulary_size - SpecialToken.UNK
         width = embedding_dim(num_classes)
         self.encoder_embedding = nn.Embedding(
-            num_embeddings=vocabulary_size, embedding_dim=width, padding_idx=PAD
+            num_embeddings=vocabulary_size, embedding_dim=width, padding_idx=SpecialToken.PAD
         )
         self.decoder_embedding = nn.Embedding(
-            num_embeddings=vocabulary_size, embedding_dim=width, padding_idx=PAD
+            num_embeddings=vocabulary_size, embedding_dim=width, padding_idx=SpecialToken.PAD
         )
         self.encoder = GateDropoutStack(
             input_size=width, hidden_size=hidden_size, num_layers=num_layers, dropout=dropout
@@ -107,7 +108,7 @@ class UEDLSTM(nn.Module):
 
     def encode(self, prefixes: PrefixBatch, *, masks: list[GateMasks]) -> LSTMState:
         """Read the real events of prefixes `[B, P]` and return the top layer's final state."""
-        inputs = self.encoder_embedding(prefixes.activities)  # [B, P] -> [B, P, D]
+        inputs = self.encoder_embedding(prefixes.tokens)  # [B, P] -> [B, P, D]
         positions = torch.arange(end=inputs.size(dim=1), device=inputs.device)
         advancing = positions.unsqueeze(dim=0) < prefixes.lengths.unsqueeze(dim=1)  # [B, P]
         zeros = inputs.new_zeros(size=(inputs.size(dim=0), self.encoder.hidden_size))
@@ -120,36 +121,36 @@ class UEDLSTM(nn.Module):
         return states[-1]
 
     def decode_first(
-        self, activities: torch.Tensor, encoded: LSTMState, *, masks: list[GateMasks]
+        self, tokens: torch.Tensor, encoded: LSTMState, *, masks: list[GateMasks]
     ) -> tuple[GaussianLogits, list[LSTMState]]:
         """Read the first decoder input of every row, starting from the encoder's final state.
 
         Args:
-            activities: `[B]` the last prefix event of every row.
+            tokens: `[B]` the last prefix event of every row.
             encoded: The encoder's final state.
             masks: The decoder's dropout masks, one per layer.
 
         Returns:
             The logits `[B, C]` of the next event, and each layer's new state.
         """
-        inputs = self.decoder_embedding(activities).unsqueeze(dim=1)  # [B] -> [B, 1, D]
+        inputs = self.decoder_embedding(tokens).unsqueeze(dim=1)  # [B] -> [B, 1, D]
         outputs, states = self.decoder.forward_chained(inputs=inputs, state=encoded, masks=masks)
         return self._logits(outputs), states
 
     def decode_step(
-        self, activities: torch.Tensor, states: list[LSTMState], *, masks: list[GateMasks]
+        self, tokens: torch.Tensor, states: list[LSTMState], *, masks: list[GateMasks]
     ) -> tuple[GaussianLogits, list[LSTMState]]:
         """Read one decoder input per row after the first, every layer from its own state.
 
         Args:
-            activities: `[B]` the previous event of every row.
+            tokens: `[B]` the previous event of every row.
             states: Each decoder layer's state.
             masks: The decoder's dropout masks, one per layer.
 
         Returns:
             The logits `[B, C]` of the next event, and each layer's new state.
         """
-        inputs = self.decoder_embedding(activities).unsqueeze(dim=1)  # [B] -> [B, 1, D]
+        inputs = self.decoder_embedding(tokens).unsqueeze(dim=1)  # [B] -> [B, 1, D]
         outputs, states = self.decoder(inputs=inputs, states=states, masks=masks)
         return self._logits(outputs), states
 
@@ -175,15 +176,15 @@ class UEDLSTM(nn.Module):
         encoded = self.encode(prefixes, masks=self.encoder.sample_masks(rows))
         masks = self.decoder.sample_masks(rows)
         logits, states = self.decode_first(
-            activities=prefixes.last_events(), encoded=encoded, masks=masks
+            tokens=prefixes.last_events(), encoded=encoded, masks=masks
         )
         steps = [logits]
         for position, force in enumerate(forced):
             if force:
                 inputs = targets[:, position]
             else:
-                inputs = _to_activities(logits.mean.argmax(dim=-1))
-            logits, states = self.decode_step(activities=inputs, states=states, masks=masks)
+                inputs = _to_tokens(logits.mean.argmax(dim=-1))
+            logits, states = self.decode_step(tokens=inputs, states=states, masks=masks)
             steps.append(logits)
         return GaussianLogits(
             mean=torch.stack([step.mean for step in steps], dim=1),  # W x [B, C] -> [B, W, C]
@@ -205,41 +206,41 @@ class UEDLSTM(nn.Module):
         """Draw `num_draws` suffixes per prefix.
 
         Each draw encodes its prefix under its own dropout masks, and at every step draws new
-        decoder masks, Gaussian logits around the means, and an activity from their softmax.
+        decoder masks, Gaussian logits around the means, and a token from their softmax.
 
         Returns:
-            The activity indices `[B, S, L]`, PAD past each draw's end.
+            The tokens `[B, S, L]`, PAD past each draw's end.
         """
         batch_size = prefixes.lengths.size(dim=0)
         rows, device = batch_size * num_draws, prefixes.lengths.device
         prefixes = prefixes.repeat_interleave(num_draws)
         encoded = self.encode(prefixes, masks=self.encoder.sample_masks(rows))
         inputs = prefixes.last_events()
-        activities = torch.full(size=(rows, max_steps), fill_value=PAD, device=device)
+        tokens = torch.full(size=(rows, max_steps), fill_value=SpecialToken.PAD, device=device)
         # The output row of every row still decoding.
         live = torch.arange(end=rows, device=device)
         states: list[LSTMState] = []
         for position in range(max_steps):
             masks = self.decoder.sample_masks(len(live))
             if position == 0:
-                logits, states = self.decode_first(activities=inputs, encoded=encoded, masks=masks)
+                logits, states = self.decode_first(tokens=inputs, encoded=encoded, masks=masks)
             else:
-                logits, states = self.decode_step(activities=inputs, states=states, masks=masks)
+                logits, states = self.decode_step(tokens=inputs, states=states, masks=masks)
             drawn = logits.draw(samples=1).squeeze(dim=0)  # [1, B, C] -> [B, C]
             classes = torch.multinomial(input=drawn.softmax(dim=-1), num_samples=1)
-            emitted = _to_activities(classes.squeeze(dim=1))  # [B, 1] -> [B]
-            continuing = (emitted != EOS).nonzero().squeeze(dim=1)
+            emitted = _to_tokens(classes.squeeze(dim=1))  # [B, 1] -> [B]
+            continuing = (emitted != SpecialToken.EOS).nonzero().squeeze(dim=1)
             live, inputs = live[continuing], emitted[continuing]
-            activities[live, position] = inputs
+            tokens[live, position] = inputs
             states = [
                 LSTMState(hidden=hidden[continuing], cell=cell[continuing])
                 for hidden, cell in states
             ]
             if len(live) == 0:
                 break
-        width = int((activities != PAD).sum(dim=1).max())
+        width = int((tokens != SpecialToken.PAD).sum(dim=1).max())
         # [B * S, L] -> [B, S, L]
-        return activities[:, :width].view(batch_size, num_draws, width)
+        return tokens[:, :width].view(batch_size, num_draws, width)
 
     def save(self, directory: Path) -> None:
         """Write the weights and the constructor arguments into `directory`."""

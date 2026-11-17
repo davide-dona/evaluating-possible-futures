@@ -3,8 +3,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from possible_futures.logs.keys import ACTIVITY_KEY
-from possible_futures.logs.statistics import case_lengths, num_prefixes, num_variants
+from possible_futures.datasets.cases import Cases, TrainTestSplit
 
 DECIMALS = 3
 
@@ -13,7 +12,7 @@ DECIMALS = 3
 class MetricColumn:
     """How a table prints the mean scores of one metric."""
 
-    header: str  # LaTeX, in the paper's macros
+    header: str  # LaTeX
     higher_is_better: bool
 
 
@@ -69,14 +68,12 @@ def scores_table(
     return '\n'.join(lines)
 
 
-def properties_table(splits: Mapping[str, tuple[pd.DataFrame, pd.DataFrame]]) -> str:
-    """A booktabs `tabular` describing every log: its cases, events, variants and activities,
-    the mean and standard deviation of its case length in events, and the number of prefixes of
-    its test split, which every mean score is taken over.
+def properties_table(splits: Mapping[str, TrainTestSplit]) -> str:
+    """A booktabs `tabular` of the size and case lengths of every log and its test prefixes.
 
     Args:
-        splits: The train and test splits of every preprocessed log, as read by `read_split`,
-            keyed by the name the table prints.
+        splits: The train and test splits of every preprocessed log, keyed by the name the
+            table prints.
 
     Returns:
         The table, to `\\input` inside a `table` environment.
@@ -88,17 +85,17 @@ def properties_table(splits: Mapping[str, tuple[pd.DataFrame, pd.DataFrame]]) ->
         r' & Test prefixes \\',
         r'\midrule',
     ]
-    for name, (train, test) in splits.items():
-        log = pd.concat([train, test], ignore_index=True)
-        lengths = case_lengths(log)
+    for name, split in splits.items():
+        cases = Cases.concat([split.train, split.test])
+        lengths = cases.case_lengths
         cells = [
             name,
-            _grouped_digits(len(lengths)),
-            _grouped_digits(len(log)),
-            _grouped_digits(num_variants(log)),
-            _grouped_digits(log[ACTIVITY_KEY].nunique()),
-            f'{lengths.mean():.1f}+{lengths.std():.1f}',
-            _grouped_digits(num_prefixes(test)),
+            _grouped_digits(len(cases)),
+            _grouped_digits(int(lengths.sum())),
+            _grouped_digits(cases.num_variants()),
+            _grouped_digits(cases.num_activities()),
+            f'{lengths.mean():.1f}+{lengths.std(ddof=1):.1f}',
+            _grouped_digits(split.test.num_prefixes()),
         ]
         lines.append(' & '.join(cells) + r' \\')
     lines += [r'\bottomrule', r'\end{tabular}', '']

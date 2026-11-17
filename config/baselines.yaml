@@ -5,3 +5,5 @@ defaults:
 - _self_
 seed: 42
 num_draws: 100
+# The most draws held at once.
+max_rows: 100000

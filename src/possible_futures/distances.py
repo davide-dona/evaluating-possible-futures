@@ -6,11 +6,11 @@ import torch
 from rapidfuzz import process
 from rapidfuzz.distance import DamerauLevenshtein
 
-from possible_futures.datasets.vocabulary import PAD
+from possible_futures.datasets.vocabulary import SpecialToken
 
 
 class Distance(Protocol):
-    """A distance between suffixes, each the vocabulary indices of its activities."""
+    """A distance between suffixes, each a tuple of tokens."""
 
     def __call__(
         self, *, left: Sequence[tuple[int, ...]], right: Sequence[tuple[int, ...]]
@@ -39,7 +39,10 @@ class Bigram(Distance):
         self, *, left: Sequence[tuple[int, ...]], right: Sequence[tuple[int, ...]]
     ) -> np.ndarray:
         # Mark the start and end of each suffix with PAD, which no suffix holds
-        codes = [np.array([PAD, *s, PAD], dtype=np.int64) for s in [*left, *right]]
+        codes = [
+            np.array([SpecialToken.PAD, *s, SpecialToken.PAD], dtype=np.int64)
+            for s in [*left, *right]
+        ]
         # Give each bigram (a, b) a unique id: a * base + b
         base = max(int(c.max()) for c in codes) + 1
         bigram_ids = [c[:-1] * base + c[1:] for c in codes]

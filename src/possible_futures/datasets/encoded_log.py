@@ -1,90 +1,59 @@
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import NamedTuple, Self
+from itertools import chain
+from typing import Self
 
 import numpy as np
-import pandas as pd
 import torch
 
 from possible_futures.datasets.batches import PrefixBatch, TrainingBatch
-from possible_futures.datasets.vocabulary import EOS, PAD, Vocabulary
-from possible_futures.logs.keys import ACTIVITY_KEY, CASE_KEY, MAX_PREFIX_KEY, MIN_PREFIX_KEY
-
-
-class Cuts(NamedTuple):
-    """Prefixes of an `EncodedLog`, each as the case it is cut from and the events it holds."""
-
-    case_indices: np.ndarray  # int64, [N]
-    prefix_lengths: np.ndarray  # int64, [N]
-
-    def select(self, index: np.ndarray) -> 'Cuts':
-        return Cuts(
-            case_indices=self.case_indices[index], prefix_lengths=self.prefix_lengths[index]
-        )
+from possible_futures.datasets.cases import Cases, Cuts
+from possible_futures.datasets.vocabulary import SpecialToken, Vocabulary
 
 
 @dataclass(frozen=True, slots=True)
 class EncodedLog:
-    """A split as flat activity indices, every case a run of consecutive events."""
+    """Cases as one row of tokens per case, PAD past the end of the case."""
 
-    activities: np.ndarray  # int64, [E]
-    case_ids: np.ndarray  # object, [C]
-    case_starts: np.ndarray  # int64, the position of the first event of every case, [C]
-    case_lengths: np.ndarray  # int64, [C]
-    min_prefix_lengths: np.ndarray  # int64, the lowest cut of every case, [C]
-    max_prefix_lengths: np.ndarray  # int64, the highest cut of every case, [C]
+    cases: Cases
+    tokens: np.ndarray  # int64, [C, L] with `L` the length of the longest case
 
     @classmethod
-    def from_split(cls, split: pd.DataFrame, vocabulary: Vocabulary) -> Self:
-        """Encode a split read by `read_split`, its cases consecutive and in time order."""
-        first = split[CASE_KEY].ne(split[CASE_KEY].shift()).to_numpy()
-        case_starts = np.flatnonzero(first)
-        return cls(
-            activities=vocabulary.encode(split[ACTIVITY_KEY]),
-            case_ids=split[CASE_KEY].to_numpy()[case_starts],
-            case_starts=case_starts,
-            case_lengths=np.diff(case_starts, append=len(split)),
-            min_prefix_lengths=split[MIN_PREFIX_KEY].to_numpy(np.int64)[case_starts],
-            max_prefix_lengths=split[MAX_PREFIX_KEY].to_numpy(np.int64)[case_starts],
+    def from_cases(cls, cases: Cases, vocabulary: Vocabulary) -> Self:
+        lengths = cases.case_lengths
+        tokens = np.full(
+            shape=(len(cases), lengths.max()), fill_value=SpecialToken.PAD, dtype=np.int64
         )
-
-    def cuts(self) -> Cuts:
-        """Every cut of every case, from its lowest to its highest prefix length."""
-        counts = np.clip(self.max_prefix_lengths - self.min_prefix_lengths + 1, a_min=0, a_max=None)
-        case_indices = np.repeat(np.arange(len(self.case_lengths)), counts)
-        # Position of each cut within its case's run of cuts.
-        offsets = np.arange(len(case_indices)) - np.repeat(np.cumsum(counts) - counts, counts)
-        return Cuts(
-            case_indices=case_indices,
-            prefix_lengths=self.min_prefix_lengths[case_indices] + offsets,
-        )
+        rows = np.repeat(np.arange(len(cases)), lengths)  # [E]
+        positions = np.arange(lengths.sum()) - np.repeat(np.cumsum(lengths) - lengths, lengths)
+        tokens[rows, positions] = vocabulary.encode(chain.from_iterable(cases.traces))
+        return cls(cases=cases, tokens=tokens)
 
     def prefixes(self, cuts: Cuts) -> PrefixBatch:
         """The events of every cut's prefix, padded to the longest of them."""
-        positions = np.arange(cuts.prefix_lengths.max())  # [P]
-        index = self.case_starts[cuts.case_indices, None] + positions[None, :]  # [B, P]
-        real = positions[None, :] < cuts.prefix_lengths[:, None]
-        activities = np.where(real, self.activities[np.where(real, index, 0)], PAD)
+        width = cuts.prefix_lengths.max()
+        tokens = self.tokens[cuts.case_indices, :width]  # [B, P]
+        real = np.arange(width)[None, :] < cuts.prefix_lengths[:, None]
         return PrefixBatch(
-            activities=torch.from_numpy(activities),
+            tokens=torch.from_numpy(np.where(real, tokens, SpecialToken.PAD)),
             lengths=torch.from_numpy(cuts.prefix_lengths),
         )
 
     def targets(self, cuts: Cuts, *, window: int) -> torch.Tensor:
         """The `window` events following every cut, EOS from the end of the case on."""
-        return torch.from_numpy(self._following(cuts, width=window, fill=EOS))
+        return torch.from_numpy(self._following(cuts, width=window, fill=SpecialToken.EOS))
 
     def suffixes(self, cuts: Cuts) -> np.ndarray:
         """The whole suffix of every cut, PAD past the end of the case, `[B, L]` with `L` the
         length of the longest suffix."""
-        width = int((self.case_lengths[cuts.case_indices] - cuts.prefix_lengths).max())
-        return self._following(cuts, width=width, fill=PAD)
+        width = int((self.cases.case_lengths[cuts.case_indices] - cuts.prefix_lengths).max())
+        return self._following(cuts, width=width, fill=SpecialToken.PAD)
 
     def training_batches(
         self, *, batch_size: int, window: int, rng: np.random.Generator
     ) -> Iterator[TrainingBatch]:
         """One epoch of training batches, every cut once, in a random order."""
-        cuts = self.cuts()
+        cuts = self.cases.cuts()
         order = rng.permutation(len(cuts.case_indices))
         for first in range(0, len(order), batch_size):
             selected = cuts.select(order[first : first + batch_size])
@@ -95,14 +64,16 @@ class EncodedLog:
 
     def cut_batches_by_length(self, *, batch_size: int) -> Iterator[Cuts]:
         """Every cut once, in batches of `batch_size`, in prefix length order."""
-        cuts = self.cuts()
+        cuts = self.cases.cuts()
         order = np.argsort(cuts.prefix_lengths, kind='stable')
         for first in range(0, len(order), batch_size):
             yield cuts.select(order[first : first + batch_size])
 
     def _following(self, cuts: Cuts, *, width: int, fill: int) -> np.ndarray:
         """The `width` events following every cut, `fill` from the end of the case on."""
-        offsets = cuts.prefix_lengths[:, None] + np.arange(width)[None, :]  # [B, W]
-        real = offsets < self.case_lengths[cuts.case_indices, None]
-        index = self.case_starts[cuts.case_indices, None] + offsets
-        return np.where(real, self.activities[np.where(real, index, 0)], fill)
+        columns = cuts.prefix_lengths[:, None] + np.arange(width)[None, :]  # [B, W]
+        real = columns < self.cases.case_lengths[cuts.case_indices, None]
+        # Columns past the last one are past the end of the case, so clipping them only
+        # reads values that `real` masks out.
+        clipped = np.minimum(columns, self.tokens.shape[1] - 1)
+        return np.where(real, self.tokens[cuts.case_indices[:, None], clipped], fill)

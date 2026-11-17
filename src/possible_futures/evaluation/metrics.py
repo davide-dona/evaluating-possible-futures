@@ -12,17 +12,14 @@ class Metric(Protocol):
     """A score of the suffixes drawn for one prefix against its observed suffix."""
 
     def __call__(self, *, draws: Sequence[tuple[int, ...]], observed: tuple[int, ...]) -> float:
-        """The score of the draws, each the vocabulary indices of its activities."""
+        """The score of the draws, each a tuple of tokens."""
         ...
 
 
 @dataclass(frozen=True, slots=True)
 class EnergyScore(Metric):
     """The fair energy score of the draws, `1/K sum_i d(x_i, y) - 1/(2 K (K - 1)) sum_{i != j}
-    d(x_i, x_j)`, whose second term is 0 for a single draw. Lower is better.
-
-    Equal draws are measured once and weighted by how many times they were drawn.
-    """
+    d(x_i, x_j)`, whose second term is 0 for a single draw. Lower is better."""
 
     distance: Distance
 

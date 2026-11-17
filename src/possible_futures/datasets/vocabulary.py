@@ -1,54 +1,65 @@
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from enum import IntEnum
+from itertools import chain
 from pathlib import Path
 from typing import Self
 
 import numpy as np
-import pandas as pd
 
-from possible_futures.logs.keys import ACTIVITY_KEY
 
-PAD = 0
-# The first output class: the model predicts UNK, EOS, and the activities, which are the
-# vocabulary from UNK on, so output class `c` is vocabulary index `c + UNK`.
-UNK = 1
-EOS = 2
+class SpecialToken(IntEnum):
+    """The tokens the vocabulary reserves ahead of the activities."""
 
-_SPECIAL_NAMES = ('<PAD>', '<UNK>', '<EOS>')
+    PAD = 0
+    UNK = 1
+    EOS = 2
+
+    @property
+    def label(self) -> str:
+        return f'<{self.name}>'
 
 
 @dataclass(frozen=True, slots=True)
 class Vocabulary:
-    """The indices of the activities of the train split.
+    """The tokens of the activities of the train split.
 
-    Index 0 is PAD, 1 UNK, 2 EOS, then the train activities in sorted order.
+    The special tokens come first, then the train activities in sorted order.
     """
 
-    activities: tuple[str, ...]  # the train activities, without the special names
-    _indices: dict[str, int] = field(init=False, repr=False, compare=False)
+    # The activities of the train split, sorted.
+    activities: tuple[str, ...]
+    # Mapping from label to token, special tokens included.
+    _tokens: dict[str, int] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, '_indices', {name: i for i, name in enumerate(self.names)})
+        """Initialize the mapping from label to token."""
+        object.__setattr__(
+            self, '_tokens', {label: token for token, label in enumerate(self.labels)}
+        )
 
     @classmethod
-    def fit(cls, train: pd.DataFrame) -> Self:
-        """Read the activities off the train split."""
-        return cls(activities=tuple(sorted(train[ACTIVITY_KEY].unique())))
+    def fit(cls, traces: Sequence[tuple[str, ...]]) -> Self:
+        """Collect the activities of the train traces."""
+        return cls(activities=tuple(sorted(set(chain.from_iterable(traces)))))
 
     @property
     def size(self) -> int:
-        """The number of indices, special ones included."""
-        return len(self.names)
+        """The number of tokens, special tokens included."""
+        return len(self.labels)
 
     @property
-    def names(self) -> tuple[str, ...]:
-        """The name of every index: the special names, then the train activities."""
-        return _SPECIAL_NAMES + self.activities
+    def labels(self) -> tuple[str, ...]:
+        """The label of every token: the special tokens, then the train activities."""
+        return tuple(token.label for token in SpecialToken) + self.activities
 
     def encode(self, activities: Iterable[str]) -> np.ndarray:
-        """Map activity names to indices, UNK for an activity the train split does not hold."""
-        return np.fromiter((self._indices.get(name, UNK) for name in activities), dtype=np.int64)
+        """Map activities to tokens, UNK for an activity the train split does not hold."""
+        return np.fromiter(
+            (self._tokens.get(activity, SpecialToken.UNK) for activity in activities),
+            dtype=np.int64,
+        )
 
     def save(self, path: Path) -> None:
         path.write_text(json.dumps({'activities': list(self.activities)}, indent=2) + '\n')
