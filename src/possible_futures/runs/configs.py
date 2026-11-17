@@ -3,6 +3,8 @@ from typing import Any
 
 from omegaconf import MISSING
 
+from possible_futures.training.train import TeacherForcing
+
 
 @dataclass
 class ProcessConfig:
@@ -50,21 +52,13 @@ class ModelConfig:
 
 
 @dataclass
-class TeacherForcingConfig:
-    start: float = MISSING
-    decay: float = MISSING
-    every: int = MISSING
-
-
-@dataclass
 class TrainingConfig:
     epochs: int = MISSING
-    lr: float = MISSING
     batch_size: int = MISSING
     window: int = MISSING
     weight_penalty: float = MISSING
     grad_clip_norm: float = MISSING
-    teacher_forcing: TeacherForcingConfig = MISSING
+    teacher_forcing: TeacherForcing = MISSING
 
 
 @dataclass
@@ -73,6 +67,9 @@ class TrainConfig:
     seed: int = MISSING
     device: str = MISSING
     model: ModelConfig = MISSING
+    # A partial `torch.optim.Optimizer`, built with `hydra.utils.instantiate` and given the
+    # parameters of the model.
+    optimizer: Any = MISSING
     training: TrainingConfig = MISSING
 
 

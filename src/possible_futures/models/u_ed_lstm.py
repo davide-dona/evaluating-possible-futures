@@ -43,6 +43,14 @@ class GaussianLogits(NamedTuple):
         return self.mean + (0.5 * self.log_variance).exp() * noise
 
 
+class Loss(NamedTuple):
+    """The training objective: the `total` to backpropagate and the terms it sums."""
+
+    total: torch.Tensor
+    data: float
+    penalty: float
+
+
 class UEDLSTM(nn.Module):
     """Activity-only U-ED-LSTM: an encoder-decoder LSTM with Gaussian activity logits and
     variational dropout kept active in sampling.
@@ -182,12 +190,15 @@ class UEDLSTM(nn.Module):
             log_variance=torch.stack([step.log_variance for step in steps], dim=1),
         )
 
-    def loss(self, logits: GaussianLogits, targets: torch.Tensor) -> torch.Tensor:
-        """The cross-entropy of the targets `[B, W]` under logits `[B, W, C]`, averaged over
-        `logit_samples` Gaussian logit draws, the positions, and the batch."""
+    def loss(self, logits: GaussianLogits, targets: torch.Tensor, *, weight_penalty: float) -> Loss:
+        """The full objective: the cross-entropy of the targets `[B, W]` under logits `[B, W, C]`,
+        averaged over `logit_samples` Gaussian logit draws, the positions, and the batch, plus
+        `weight_penalty` times the sum of the squared parameters."""
         drawn = logits.draw(samples=self.logit_samples)  # [S, B, W, C]
         classes = _to_classes(targets).expand(self.logit_samples, -1, -1)  # [B, W] -> [S, B, W]
-        return F.cross_entropy(input=drawn.flatten(end_dim=2), target=classes.flatten())
+        data = F.cross_entropy(input=drawn.flatten(end_dim=2), target=classes.flatten())
+        penalty = weight_penalty * sum(parameter.square().sum() for parameter in self.parameters())
+        return Loss(total=data + penalty, data=data.item(), penalty=penalty.item())
 
     @torch.no_grad()
     def sample(self, prefixes: PrefixBatch, *, num_draws: int, max_steps: int) -> torch.Tensor:

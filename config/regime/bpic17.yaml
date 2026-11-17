@@ -1,4 +1,5 @@
 # @package _global_
-training:
+optimizer:
   lr: 4.0e-6
+training:
   batch_size: 1024
