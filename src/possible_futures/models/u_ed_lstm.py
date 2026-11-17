@@ -8,10 +8,10 @@ import torch.nn.functional as F
 from safetensors.torch import load_file, save_file
 from torch import nn
 
-from possible_futures.datasets.batches import PrefixBatch, TrainingBatch
+from possible_futures.datasets.encoding import PrefixTokens
 from possible_futures.datasets.vocabulary import SpecialToken
+from possible_futures.models.decoder import Decoder
 from possible_futures.models.lstm import GateDropoutStack, GateMasks, LSTMState
-from possible_futures.models.sampler import SuffixSampler
 
 _WEIGHTS_FILE = 'model.safetensors'
 _ARGUMENTS_FILE = 'arguments.json'
@@ -52,7 +52,7 @@ class Loss(NamedTuple):
     penalty: float
 
 
-class UEDLSTM(nn.Module, SuffixSampler):
+class UEDLSTM(nn.Module, Decoder):
     """Activity-only U-ED-LSTM: an encoder-decoder LSTM with Gaussian activity logits and
     variational dropout kept active in sampling.
 
@@ -106,7 +106,7 @@ class UEDLSTM(nn.Module, SuffixSampler):
         self.mean_head = nn.Linear(in_features=hidden_size, out_features=num_classes)
         self.log_variance_head = nn.Linear(in_features=hidden_size, out_features=num_classes)
 
-    def encode(self, prefixes: PrefixBatch, *, masks: list[GateMasks]) -> LSTMState:
+    def encode(self, prefixes: PrefixTokens, *, masks: list[GateMasks]) -> LSTMState:
         """Read the real events of prefixes `[B, P]` and return the top layer's final state."""
         inputs = self.encoder_embedding(prefixes.tokens)  # [B, P] -> [B, P, D]
         positions = torch.arange(end=inputs.size(dim=1), device=inputs.device)
@@ -160,18 +160,20 @@ class UEDLSTM(nn.Module, SuffixSampler):
             mean=self.mean_head(features), log_variance=self.log_variance_head(features)
         )
 
-    def forward(self, batch: TrainingBatch, *, forced: Sequence[bool]) -> GaussianLogits:
+    def forward(
+        self, prefixes: PrefixTokens, targets: torch.Tensor, *, forced: Sequence[bool]
+    ) -> GaussianLogits:
         """Predict the logit distribution of each target position, dropout active.
 
         Args:
-            batch: Prefixes and their `[B, W]` targets.
-            forced: `W - 1` flags; entry `t` is whether step `t + 1` reads target `t` instead
+            prefixes: The prefix tokens.
+            targets: The `[B, T]` events following each prefix.
+            forced: `T - 1` flags; entry `t` is whether step `t + 1` reads target `t` instead
                 of the most likely class of step `t`.
 
         Returns:
-            The logits `[B, W, C]` of every target position.
+            The logits `[B, T, C]` of every target position.
         """
-        prefixes, targets = batch
         rows = targets.size(dim=0)
         encoded = self.encode(prefixes, masks=self.encoder.sample_masks(rows))
         masks = self.decoder.sample_masks(rows)
@@ -187,22 +189,22 @@ class UEDLSTM(nn.Module, SuffixSampler):
             logits, states = self.decode_step(tokens=inputs, states=states, masks=masks)
             steps.append(logits)
         return GaussianLogits(
-            mean=torch.stack([step.mean for step in steps], dim=1),  # W x [B, C] -> [B, W, C]
+            mean=torch.stack([step.mean for step in steps], dim=1),  # T x [B, C] -> [B, T, C]
             log_variance=torch.stack([step.log_variance for step in steps], dim=1),
         )
 
     def loss(self, logits: GaussianLogits, targets: torch.Tensor, *, weight_penalty: float) -> Loss:
-        """The full objective: the cross-entropy of the targets `[B, W]` under logits `[B, W, C]`,
+        """The full objective: the cross-entropy of the targets `[B, T]` under logits `[B, T, C]`,
         averaged over `logit_samples` Gaussian logit draws, the positions, and the batch, plus
         `weight_penalty` times the sum of the squared parameters."""
-        drawn = logits.draw(samples=self.logit_samples)  # [S, B, W, C]
-        classes = _to_classes(targets).expand(self.logit_samples, -1, -1)  # [B, W] -> [S, B, W]
+        drawn = logits.draw(samples=self.logit_samples)  # [S, B, T, C]
+        classes = _to_classes(targets).expand(self.logit_samples, -1, -1)  # [B, T] -> [S, B, T]
         data = F.cross_entropy(input=drawn.flatten(end_dim=2), target=classes.flatten())
         penalty = weight_penalty * sum(parameter.square().sum() for parameter in self.parameters())
         return Loss(total=data + penalty, data=data.item(), penalty=penalty.item())
 
     @torch.no_grad()
-    def sample(self, prefixes: PrefixBatch, *, num_draws: int, max_steps: int) -> torch.Tensor:
+    def draw(self, prefixes: PrefixTokens, *, num_draws: int, max_steps: int) -> torch.Tensor:
         """Draw `num_draws` suffixes per prefix.
 
         Each draw encodes its prefix under its own dropout masks, and at every step draws new

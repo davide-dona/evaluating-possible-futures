@@ -13,6 +13,16 @@ class ProcessConfig:
 
 
 @dataclass
+class SplitConfig:
+    """How a log is filtered and split into train and test."""
+
+    test_fraction: float = MISSING
+    max_case_length_percentile: float = MISSING
+    # Also the length of the end window, which debiases the end of the log.
+    max_case_duration_percentile: float = MISSING
+
+
+@dataclass
 class DataConfig:
     """The settings of one dataset."""
 
@@ -21,9 +31,7 @@ class DataConfig:
     activity_key: str = MISSING
     timestamp_key: str = MISSING
     separator: str = MISSING
-    test_fraction: float = MISSING
-    max_case_length_percentile: float = MISSING
-    max_case_duration_percentile: float = MISSING
+    split: SplitConfig = MISSING
     # Set only on a dataset simulated from a known process.
     num_cases: int | None = None
     simulation_seed: int | None = None

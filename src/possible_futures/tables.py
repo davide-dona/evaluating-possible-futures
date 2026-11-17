@@ -3,7 +3,8 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from possible_futures.datasets.cases import Cases, TrainTestSplit
+from possible_futures.datasets.cases import Cases
+from possible_futures.preprocessing.splitting import TrainTestSplit
 
 DECIMALS = 3
 
@@ -95,7 +96,7 @@ def properties_table(splits: Mapping[str, TrainTestSplit]) -> str:
             _grouped_digits(cases.num_variants()),
             _grouped_digits(cases.num_activities()),
             f'{lengths.mean():.1f}+{lengths.std(ddof=1):.1f}',
-            _grouped_digits(split.test.num_prefixes()),
+            _grouped_digits(len(split.test_prefixes)),
         ]
         lines.append(' & '.join(cells) + r' \\')
     lines += [r'\bottomrule', r'\end{tabular}', '']

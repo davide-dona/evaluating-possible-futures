@@ -9,7 +9,7 @@ from omegaconf import MISSING
 
 from possible_futures.datasets.cases import Cases
 from possible_futures.datasets.vocabulary import Vocabulary
-from possible_futures.evaluation.scoring import MeanScores, observed_suffixes, score_prefixes
+from possible_futures.evaluation.scoring import Scores, observed_suffixes, score_forecasts
 from possible_futures.inference.draws import Decoding
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
@@ -40,7 +40,7 @@ def main(config: EvaluateConfig) -> None:
     name = config.data.name
     decoding_files = [
         path
-        for stage in (Stage.GENERATE, Stage.COLLAPSE, Stage.BASELINES)
+        for stage in (Stage.DECODE, Stage.COLLAPSE)
         for path in sorted(stage_dir(name, stage).glob('*.parquet'))
     ]
     metrics = {column: instantiate(metric) for column, metric in config.metrics.items()}
@@ -59,13 +59,13 @@ def main(config: EvaluateConfig) -> None:
     means = {}
     for path in decoding_files:
         with step(f'Scoring the {path.stem} suffixes'):
-            prefixes = Decoding.load(path, vocabulary).prefixes
-            observed = observed_suffixes(prefixes, test=test, vocabulary=vocabulary)
-            per_prefix = score_prefixes(
-                prefixes, observed=observed, metrics=metrics, workers=config.workers
+            forecasts = Decoding.load(path, vocabulary).forecasts
+            observed = observed_suffixes(forecasts, test=test, vocabulary=vocabulary)
+            per_forecast = score_forecasts(
+                forecasts, observed=observed, metrics=metrics, workers=config.workers
             )
-            means[path.stem] = per_prefix.mean()
-    scores = MeanScores(table=pd.DataFrame.from_dict(means, orient='index'))
+            means[path.stem] = per_forecast.mean()
+    scores = Scores(table=pd.DataFrame.from_dict(means, orient='index'))
     scores.save(output)
     print(f'Wrote the mean scores to {output}\n\n{scores.table.round(4).to_string()}')
 

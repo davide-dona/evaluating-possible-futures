@@ -10,7 +10,7 @@ import pyarrow.parquet as pq
 
 from possible_futures.datasets.vocabulary import SpecialToken, Vocabulary
 
-_CASE_ID_COLUMN = 'case'
+_CASE_ID_COLUMN = 'case_id'
 _PREFIX_LENGTH_COLUMN = 'prefix_length'
 _DRAW_COLUMN = 'draw'
 _ACTIVITIES_COLUMN = 'activities'
@@ -27,8 +27,8 @@ DRAWS_SCHEMA = pa.schema(
 )
 
 
-class PrefixDraws(NamedTuple):
-    """The draws of one prefix of a decoding."""
+class Forecast(NamedTuple):
+    """The draws of one prefix."""
 
     case_id: str
     prefix_length: int
@@ -37,18 +37,20 @@ class PrefixDraws(NamedTuple):
 
 @dataclass(frozen=True, slots=True)
 class Decoding:
-    """The draws of every prefix of a decoding, in file order."""
+    """The forecasts of one decoder for every test prefix, in file order."""
 
-    prefixes: list[PrefixDraws]
+    forecasts: list[Forecast]
 
     def save(self, path: Path, vocabulary: Vocabulary) -> None:
         """Write the draws as Parquet, creating the directory if missing."""
-        draws = [draw for prefix in self.prefixes for draw in prefix.draws]
-        counts = [len(prefix.draws) for prefix in self.prefixes]
+        draws = [draw for forecast in self.forecasts for draw in forecast.draws]
+        counts = [len(forecast.draws) for forecast in self.forecasts]
         offsets = np.cumsum([0, *(len(draw) for draw in draws)])
         table = _draws_table(
-            case_ids=np.repeat([prefix.case_id for prefix in self.prefixes], counts),
-            prefix_lengths=np.repeat([prefix.prefix_length for prefix in self.prefixes], counts),
+            case_ids=np.repeat([forecast.case_id for forecast in self.forecasts], counts),
+            prefix_lengths=np.repeat(
+                [forecast.prefix_length for forecast in self.forecasts], counts
+            ),
             draw_numbers=np.concatenate([np.arange(count) for count in counts], dtype=np.int32),
             offsets=offsets,
             values=np.fromiter((token for draw in draws for token in draw), dtype=np.int64),
@@ -74,8 +76,8 @@ class Decoding:
         case_ids = table[_CASE_ID_COLUMN].take(pa.array(starts)).to_pylist()
         prefix_lengths = table[_PREFIX_LENGTH_COLUMN].take(pa.array(starts)).to_pylist()
         return cls(
-            prefixes=[
-                PrefixDraws(case_id=case_id, prefix_length=prefix_length, draws=suffixes[a:b])
+            forecasts=[
+                Forecast(case_id=case_id, prefix_length=prefix_length, draws=suffixes[a:b])
                 for case_id, prefix_length, a, b in zip(
                     case_ids, prefix_lengths, starts, stops, strict=True
                 )

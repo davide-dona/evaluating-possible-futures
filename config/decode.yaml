@@ -1,0 +1,15 @@
+defaults:
+- decode_schema
+- output/default
+- dataset: ???
+- _self_
+# The decoder, overriding the defaults below where it needs to.
+- decoder: ???
+seed: 42
+device: cuda:0
+num_draws: 100
+# The most draws decoded at once.
+max_rows: 8192
+hydra:
+  # The decodings of a dataset share the stage directory, so each keeps its own Hydra record.
+  output_subdir: .hydra/${decoder.name}

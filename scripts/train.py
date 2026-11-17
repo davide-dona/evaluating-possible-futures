@@ -9,7 +9,8 @@ from hydra.utils import instantiate
 from omegaconf import MISSING, OmegaConf
 
 from possible_futures.datasets.cases import Cases
-from possible_futures.datasets.encoded_log import EncodedLog
+from possible_futures.datasets.encoding import EncodedPrefixes
+from possible_futures.datasets.prefixes import Prefixes
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.models.u_ed_lstm import UEDLSTM
 from possible_futures.runs.configs import DataConfig
@@ -30,7 +31,7 @@ class ModelConfig:
 class TrainingConfig:
     epochs: int = MISSING
     batch_size: int = MISSING
-    window: int = MISSING
+    target_length: int = MISSING
     weight_penalty: float = MISSING
     grad_clip_norm: float = MISSING
     teacher_forcing: TeacherForcing = MISSING
@@ -71,7 +72,8 @@ def main(config: TrainConfig) -> None:
     )
     with step('Encoding the train split'):
         vocabulary = Vocabulary.load(vocabulary_file(name))
-        train_log = EncodedLog.from_cases(Cases.load(split_file(name, Split.TRAIN)), vocabulary)
+        cases = Cases.load(split_file(name, Split.TRAIN))
+        prefixes = EncodedPrefixes.build(cases, Prefixes.every(cases), vocabulary=vocabulary)
 
     model = UEDLSTM(vocabulary_size=vocabulary.size, **config.model).to(device)
     print(f'{sum(p.numel() for p in model.parameters()):,} parameters', flush=True)
@@ -81,10 +83,10 @@ def main(config: TrainConfig) -> None:
     for record in train(
         model,
         optimizer,
-        train_log=train_log,
+        prefixes=prefixes,
         epochs=training.epochs,
         batch_size=training.batch_size,
-        window=training.window,
+        target_length=training.target_length,
         weight_penalty=training.weight_penalty,
         grad_clip_norm=training.grad_clip_norm,
         teacher_forcing=OmegaConf.to_object(training.teacher_forcing),

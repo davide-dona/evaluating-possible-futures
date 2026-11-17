@@ -5,9 +5,9 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
-from possible_futures.datasets.batches import PrefixBatch
+from possible_futures.datasets.encoding import PrefixTokens
 from possible_futures.datasets.vocabulary import SpecialToken, Vocabulary
-from possible_futures.models.sampler import SuffixSampler
+from possible_futures.models.decoder import Decoder
 
 # The pseudo-activity that ends a case.
 END = '<END>'
@@ -54,7 +54,7 @@ class Process(ABC):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class ProcessSampler(SuffixSampler):
+class SamplingDecoder(Decoder):
     """Draws every suffix from a process one activity at a time.
 
     `vocabulary` must hold every activity the process emits.
@@ -64,7 +64,7 @@ class ProcessSampler(SuffixSampler):
     vocabulary: Vocabulary
     rng: np.random.Generator
 
-    def sample(self, prefixes: PrefixBatch, *, num_draws: int, max_steps: int) -> torch.Tensor:
+    def draw(self, prefixes: PrefixTokens, *, num_draws: int, max_steps: int) -> torch.Tensor:
         return _continue_prefixes(
             prefixes,
             decode=lambda prefix: self.process.sample_suffix(
@@ -76,7 +76,7 @@ class ProcessSampler(SuffixSampler):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class GreedyProcessDecoder(SuffixSampler):
+class GreedyDecoder(Decoder):
     """Continues every prefix with the most probable activity of a process at every step, so
     all draws of a prefix are the same suffix.
 
@@ -86,7 +86,7 @@ class GreedyProcessDecoder(SuffixSampler):
     process: Process
     vocabulary: Vocabulary
 
-    def sample(self, prefixes: PrefixBatch, *, num_draws: int, max_steps: int) -> torch.Tensor:
+    def draw(self, prefixes: PrefixTokens, *, num_draws: int, max_steps: int) -> torch.Tensor:
         return _continue_prefixes(
             prefixes,
             decode=lambda prefix: self.process.greedy_suffix(prefix, max_steps=max_steps),
@@ -107,7 +107,7 @@ def _choose(options: dict[str, float], *, rng: np.random.Generator) -> str:
 
 
 def _continue_prefixes(
-    prefixes: PrefixBatch,
+    prefixes: PrefixTokens,
     *,
     decode: Callable[[tuple[str, ...]], tuple[str, ...]],
     vocabulary: Vocabulary,

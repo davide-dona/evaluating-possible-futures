@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
-CASE_COLUMN = 'case'
+CASE_COLUMN = 'case_id'
 ACTIVITY_COLUMN = 'activity'
 TIMESTAMP_COLUMN = 'timestamp'
 

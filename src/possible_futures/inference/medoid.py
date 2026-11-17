@@ -2,7 +2,7 @@ from collections import Counter
 from collections.abc import Sequence
 
 from possible_futures.distances import Distance
-from possible_futures.inference.draws import Decoding, PrefixDraws
+from possible_futures.inference.draws import Decoding, Forecast
 
 
 def medoid_index(draws: Sequence[tuple[int, ...]], *, distance: Distance) -> int:
@@ -18,12 +18,12 @@ def medoid_index(draws: Sequence[tuple[int, ...]], *, distance: Distance) -> int
 def medoids(decoding: Decoding, *, distance: Distance) -> Decoding:
     """Keep only the medoid of the draws of every prefix."""
     return Decoding(
-        prefixes=[
-            PrefixDraws(
-                case_id=prefix.case_id,
-                prefix_length=prefix.prefix_length,
-                draws=[prefix.draws[medoid_index(prefix.draws, distance=distance)]],
+        forecasts=[
+            Forecast(
+                case_id=forecast.case_id,
+                prefix_length=forecast.prefix_length,
+                draws=[forecast.draws[medoid_index(forecast.draws, distance=distance)]],
             )
-            for prefix in decoding.prefixes
+            for forecast in decoding.forecasts
         ]
     )

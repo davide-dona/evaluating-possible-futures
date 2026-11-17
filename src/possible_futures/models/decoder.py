@@ -2,13 +2,13 @@ from typing import Protocol
 
 import torch
 
-from possible_futures.datasets.batches import PrefixBatch
+from possible_futures.datasets.encoding import PrefixTokens
 
 
-class SuffixSampler(Protocol):
-    """Draws suffixes that continue a batch of prefixes."""
+class Decoder(Protocol):
+    """Continues a batch of prefixes with suffixes."""
 
-    def sample(self, prefixes: PrefixBatch, *, num_draws: int, max_steps: int) -> torch.Tensor:
+    def draw(self, prefixes: PrefixTokens, *, num_draws: int, max_steps: int) -> torch.Tensor:
         """Draw `num_draws` suffixes per prefix, each at most `max_steps` events.
 
         Returns:

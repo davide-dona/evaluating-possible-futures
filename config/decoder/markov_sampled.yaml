@@ -1,0 +1,8 @@
+# @package _global_
+# A first-order Markov chain fitted on train, sampled.
+decoder:
+  name: markov_sampled
+  model: MARKOV
+  strategy: SAMPLED
+device: cpu
+max_rows: 100000

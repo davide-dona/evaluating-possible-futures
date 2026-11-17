@@ -1,0 +1,6 @@
+# @package _global_
+# The trained U-ED-LSTM, sampled.
+decoder:
+  name: sampled
+  model: U_ED_LSTM
+  strategy: SAMPLED

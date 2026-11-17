@@ -43,7 +43,7 @@ def main(config: CollapseConfig) -> None:
         vocabulary = Vocabulary.load(vocabulary_file(name))
         collapsed = medoids(Decoding.load(sampled, vocabulary), distance=distance)
         collapsed.save(path, vocabulary)
-        print(f'  {len(collapsed.prefixes):,} prefixes', flush=True)
+        print(f'  {len(collapsed.forecasts):,} prefixes', flush=True)
 
 
 if __name__ == '__main__':

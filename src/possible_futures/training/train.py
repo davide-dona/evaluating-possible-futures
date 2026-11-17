@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
-from possible_futures.datasets.encoded_log import EncodedLog
+from possible_futures.datasets.encoding import EncodedPrefixes
 from possible_futures.models.u_ed_lstm import UEDLSTM
 
 
@@ -38,10 +38,10 @@ def train(
     model: UEDLSTM,
     optimizer: torch.optim.Optimizer,
     *,
-    train_log: EncodedLog,
+    prefixes: EncodedPrefixes,
     epochs: int,
     batch_size: int,
-    window: int,
+    target_length: int,
     weight_penalty: float,
     grad_clip_norm: float,
     teacher_forcing: TeacherForcing,
@@ -52,27 +52,31 @@ def train(
 
     Args:
         model: The model, on `device`.
+        prefixes: The train prefixes.
         optimizer: Steps the parameters of `model`.
-        batch_size: Cuts per optimizer step.
-        window: Events after the prefix each cut targets.
+        batch_size: Prefixes per optimizer step.
+        target_length: Events following every prefix that label it.
         weight_penalty: Weight of the sum of squared parameters in the loss.
-        rng: Shuffles the training cuts and flips the teacher forcing coins.
+        rng: Shuffles the training prefixes and flips the teacher forcing coins.
     """
     for epoch in range(epochs):
         started = time.perf_counter()
         ratio = teacher_forcing.ratio(epoch=epoch, epochs=epochs)
         total, rows = 0.0, 0
-        for batch in train_log.training_batches(batch_size=batch_size, window=window, rng=rng):
-            batch = batch.to(device)
-            forced = rng.random(size=window - 1) < ratio
-            logits = model(batch, forced=forced.tolist())
-            loss = model.loss(logits=logits, targets=batch.targets, weight_penalty=weight_penalty)
+        order = rng.permutation(len(prefixes))
+        for start in range(0, len(order), batch_size):
+            index = order[start : start + batch_size]
+            inputs = prefixes.inputs(index).to(device)
+            targets = prefixes.targets(index, width=target_length).to(device)
+            forced = rng.random(size=target_length - 1) < ratio
+            logits = model(inputs, targets, forced=forced.tolist())
+            loss = model.loss(logits=logits, targets=targets, weight_penalty=weight_penalty)
             optimizer.zero_grad(set_to_none=True)
             loss.total.backward()
             torch.nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=grad_clip_norm)
             optimizer.step()
-            total += loss.data * len(batch.targets)
-            rows += len(batch.targets)
+            total += loss.data * len(index)
+            rows += len(index)
         yield EpochRecord(
             epoch=epoch + 1,
             teacher_forcing=ratio,

@@ -1,17 +1,18 @@
 from pathlib import Path
 
+import numpy as np
 import torch
 
-from possible_futures.datasets.encoded_log import EncodedLog
+from possible_futures.datasets.encoding import EncodedPrefixes
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.inference.draws import DecodingWriter
-from possible_futures.models.sampler import SuffixSampler
+from possible_futures.models.decoder import Decoder
 
 
 def write_draws(
-    sampler: SuffixSampler,
+    decoder: Decoder,
     *,
-    test_log: EncodedLog,
+    test: EncodedPrefixes,
     vocabulary: Vocabulary,
     path: Path,
     num_draws: int,
@@ -19,26 +20,28 @@ def write_draws(
     max_rows: int,
     device: torch.device,
 ) -> int:
-    """Draw suffixes for every test prefix from `sampler` and save them to `path`.
+    """Draw suffixes for every test prefix from `decoder` and save them to `path`.
 
     Args:
         max_steps: The most events a draw holds.
         max_rows: The most draws held at once.
-        device: Where the prefixes are sent to be sampled.
+        device: Where the prefixes are sent to be decoded.
 
     Returns:
         The number of prefixes written.
     """
-    num_prefixes = 0
+    batch_size = max(1, max_rows // num_draws)
+    order = np.argsort(test.prefixes.lengths, kind='stable')
     with DecodingWriter(path, vocabulary) as writer:
-        for cuts in test_log.cut_batches_by_length(batch_size=max(1, max_rows // num_draws)):
-            prefixes = test_log.prefixes(cuts).to(device)
-            tokens = sampler.sample(prefixes, num_draws=num_draws, max_steps=max_steps)
+        for start in range(0, len(order), batch_size):
+            index = order[start : start + batch_size]
+            tokens = decoder.draw(
+                test.inputs(index).to(device), num_draws=num_draws, max_steps=max_steps
+            )
             writer.write(
-                case_ids=test_log.cases.case_ids[cuts.case_indices],
-                prefix_lengths=cuts.prefix_lengths,
+                case_ids=test.prefixes.case_ids[index],
+                prefix_lengths=test.prefixes.lengths[index],
                 tokens=tokens.flatten(end_dim=1).cpu().numpy(),  # [B, S, L] -> [B * S, L]
                 num_draws=num_draws,
             )
-            num_prefixes += len(cuts.case_indices)
-    return num_prefixes
+    return len(test)

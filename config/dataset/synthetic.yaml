@@ -1,15 +1,13 @@
 # @package _global_
+defaults:
+- _defaults
+- _self_
 data:
   name: synthetic
   case_key: case
   activity_key: activity
   timestamp_key: timestamp
   separator: ','
-  test_fraction: 0.2
-  # Every case holds 5 events and lasts 4 hours, so no case is an outlier.
-  max_case_length_percentile: 100
-  # Also the length of the debiased window at the end of the log.
-  max_case_duration_percentile: 100
   num_cases: 20000
   simulation_seed: 42
   process:

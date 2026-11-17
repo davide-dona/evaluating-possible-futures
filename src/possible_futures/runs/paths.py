@@ -17,9 +17,8 @@ class Stage(StrEnum):
     """The stages writing under `OUTPUTS`, named as their scripts."""
 
     TRAIN = 'train'
-    GENERATE = 'generate'
+    DECODE = 'decode'
     COLLAPSE = 'collapse'
-    BASELINES = 'baselines'
     EVALUATE = 'evaluate'
 
 
@@ -29,6 +28,11 @@ def original_log_file(dataset: str) -> Path:
 
 def split_file(dataset: str, split: Split) -> Path:
     return DATA / dataset / 'processed' / f'{split}.parquet'
+
+
+def test_prefixes_file(dataset: str) -> Path:
+    """The test prefixes that are scored."""
+    return DATA / dataset / 'processed' / 'test_prefixes.parquet'
 
 
 def vocabulary_file(dataset: str) -> Path:
@@ -44,8 +48,13 @@ def model_dir(dataset: str) -> Path:
     return stage_dir(dataset, Stage.TRAIN)
 
 
+def decoding_file(dataset: str, decoder: str) -> Path:
+    return stage_dir(dataset, Stage.DECODE) / f'{decoder}.parquet'
+
+
 def sampled_file(dataset: str) -> Path:
-    return stage_dir(dataset, Stage.GENERATE) / 'sampled.parquet'
+    """The decoding the trained model samples."""
+    return decoding_file(dataset, 'sampled')
 
 
 def scores_file(dataset: str) -> Path:

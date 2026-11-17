@@ -1,13 +1,22 @@
+from typing import NamedTuple
+
 import numpy as np
 import pandas as pd
 
-from possible_futures.datasets.cases import Cases, TrainTestSplit
+from possible_futures.datasets.cases import Cases
+from possible_futures.datasets.prefixes import Prefixes
 from possible_futures.preprocessing.events import (
     ACTIVITY_COLUMN,
     CASE_COLUMN,
     TIMESTAMP_COLUMN,
     case_lengths,
 )
+
+
+class TrainTestSplit(NamedTuple):
+    train: Cases
+    test: Cases
+    test_prefixes: Prefixes  # the test prefixes that are scored
 
 
 def out_of_time_split(
@@ -17,14 +26,14 @@ def out_of_time_split(
     the start of the case at the `1 - test_fraction` quantile of case starts.
 
     Train keeps the cases finished before the separation, test the cases still running at it.
-    Every case is cut up to its last prefix that ends before the end window and leaves a
-    non-empty suffix. A test case started before the separation is cut from its first prefix
-    reaching past it.
+    The test prefixes of a case run from its shortest to its longest. The longest is the last one
+    that ends before the end window and leaves a non-empty suffix. The shortest is the first one
+    reaching past the separation, 1 for a case started after it.
     """
     events = _sort(events)
     window_start = events[TIMESTAMP_COLUMN].max() - pd.Timedelta(days=end_window_days)
-    # A cut of k ends at the k-th event in time order, so the events before the window count
-    # the cuts ending before it.
+    # A prefix of length k ends at the k-th event in time order, so the events before the window
+    # count the prefixes ending before it.
     before_window = (events[TIMESTAMP_COLUMN] <= window_start).groupby(events[CASE_COLUMN]).sum()
     max_prefix_lengths = np.minimum(before_window, case_lengths(events) - 1)
     events = events[events[CASE_COLUMN].isin(before_window.index[before_window > 0])]
@@ -38,20 +47,18 @@ def out_of_time_split(
     crossing = test_cases.difference(start_times.sort_values().index[first_test_case:])
 
     min_prefix_lengths = pd.Series(1, index=edges.index)
-    first_cuts = _first_cuts_after(
+    shortest = _shortest_prefix_lengths_after(
         events[events[CASE_COLUMN].isin(crossing)], separation_time=separation_time
     )
-    min_prefix_lengths.loc[first_cuts.index] = first_cuts
+    min_prefix_lengths.loc[shortest.index] = shortest
+    test = _cases(events[events[CASE_COLUMN].isin(test_cases)])
     return TrainTestSplit(
-        train=_cases(
-            events[events[CASE_COLUMN].isin(train_cases)],
-            min_prefix_lengths=min_prefix_lengths,
-            max_prefix_lengths=max_prefix_lengths,
-        ),
-        test=_cases(
-            events[events[CASE_COLUMN].isin(test_cases)],
-            min_prefix_lengths=min_prefix_lengths,
-            max_prefix_lengths=max_prefix_lengths,
+        train=_cases(events[events[CASE_COLUMN].isin(train_cases)]),
+        test=test,
+        test_prefixes=Prefixes.within(
+            test.case_ids,
+            shortest=min_prefix_lengths.loc[test.case_ids].to_numpy(np.int64),
+            longest=max_prefix_lengths.loc[test.case_ids].to_numpy(np.int64),
         ),
     )
 
@@ -67,10 +74,12 @@ def _sort(events: pd.DataFrame) -> pd.DataFrame:
     return events.drop(columns='_case_rank').reset_index(drop=True)
 
 
-def _first_cuts_after(events: pd.DataFrame, *, separation_time: np.datetime64) -> pd.Series:
-    """The first cut of every case whose prefix holds an event after the separation."""
-    # A cut of k takes the first k events, so a cut is the 1-based position of the event the
-    # prefix has to reach.
+def _shortest_prefix_lengths_after(
+    events: pd.DataFrame, *, separation_time: np.datetime64
+) -> pd.Series:
+    """The length of the shortest prefix of every case that holds an event after the separation."""
+    # A prefix of length k takes the first k events, so its length is the 1-based position of the
+    # event it has to reach.
     positions = events.groupby(CASE_COLUMN).cumcount() + 1
     # Compared as numpy values, since a tz-aware column and a numpy timestamp are not comparable
     # as pandas objects.
@@ -78,14 +87,7 @@ def _first_cuts_after(events: pd.DataFrame, *, separation_time: np.datetime64) -
     return positions[selected].groupby(events[CASE_COLUMN][selected]).min()
 
 
-def _cases(
-    events: pd.DataFrame, *, min_prefix_lengths: pd.Series, max_prefix_lengths: pd.Series
-) -> Cases:
+def _cases(events: pd.DataFrame) -> Cases:
     """The cases of sorted events, in order of their first event."""
     traces = events.groupby(CASE_COLUMN, sort=False)[ACTIVITY_COLUMN].agg(tuple)
-    return Cases(
-        case_ids=traces.index.to_numpy(dtype=object),
-        traces=tuple(traces),
-        min_prefix_lengths=min_prefix_lengths.loc[traces.index].to_numpy(np.int64),
-        max_prefix_lengths=max_prefix_lengths.loc[traces.index].to_numpy(np.int64),
-    )
+    return Cases(case_ids=traces.index.to_numpy(dtype=object), traces=tuple(traces))

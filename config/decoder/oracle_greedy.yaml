@@ -1,0 +1,10 @@
+# @package _global_
+# The true process of the simulated dataset, its most probable activity at every step.
+decoder:
+  name: oracle_greedy
+  model: ORACLE
+  strategy: GREEDY
+device: cpu
+max_rows: 100000
+# Every draw of a greedy decoder is the same suffix.
+num_draws: 1

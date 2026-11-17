@@ -11,40 +11,40 @@ import torch
 from possible_futures.datasets.cases import Cases
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.evaluation.metrics import Metric
-from possible_futures.inference.draws import PrefixDraws
+from possible_futures.inference.draws import Forecast
 
 
 def observed_suffixes(
-    prefixes: Sequence[PrefixDraws], test: Cases, vocabulary: Vocabulary
+    forecasts: Sequence[Forecast], test: Cases, vocabulary: Vocabulary
 ) -> list[tuple[int, ...]]:
-    """The observed suffix of every prefix in the test cases, as tokens."""
+    """The observed suffix of the prefix of every forecast, as tokens."""
     traces = {
         case_id: tuple(vocabulary.encode(trace).tolist())
         for case_id, trace in zip(test.case_ids, test.traces, strict=True)
     }
-    return [traces[prefix.case_id][prefix.prefix_length :] for prefix in prefixes]
+    return [traces[forecast.case_id][forecast.prefix_length :] for forecast in forecasts]
 
 
-def score_prefixes(
-    prefixes: Sequence[PrefixDraws],
+def score_forecasts(
+    forecasts: Sequence[Forecast],
     observed: Sequence[tuple[int, ...]],
     *,
     metrics: Mapping[str, Metric],
     workers: int,
 ) -> pd.DataFrame:
-    """Score the draws of every prefix against its observed suffix under every metric.
+    """Score every forecast against its observed suffix under every metric.
 
     Args:
         metrics: The metrics, keyed by the column they are written to. Each must pickle, to
             reach the worker processes.
-        workers: Processes scoring the prefixes in parallel.
+        workers: Processes scoring the forecasts in parallel.
 
     Returns:
-        One row per prefix, in the order of `prefixes`, with its score under every metric.
+        One row per forecast, in the order of `forecasts`, with its score under every metric.
     """
-    scores = pd.DataFrame(index=range(len(prefixes)))
-    draws = [prefix.draws for prefix in prefixes]
-    chunksize = max(1, len(prefixes) // (16 * workers))
+    scores = pd.DataFrame(index=range(len(forecasts)))
+    draws = [forecast.draws for forecast in forecasts]
+    chunksize = max(1, len(forecasts) // (16 * workers))
     # One torch thread per process, so the processes do not oversubscribe the cores.
     with ProcessPoolExecutor(
         max_workers=workers, initializer=torch.set_num_threads, initargs=(1,)
@@ -60,7 +60,7 @@ def _score(draws: Sequence[tuple[int, ...]], observed: tuple[int, ...], *, metri
 
 
 @dataclass(frozen=True, slots=True)
-class MeanScores:
+class Scores:
     """The mean score of every decoding under every metric."""
 
     INDEX: ClassVar[str] = 'decoding'

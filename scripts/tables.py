@@ -4,10 +4,12 @@ import hydra
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
-from possible_futures.datasets.cases import Cases, TrainTestSplit
-from possible_futures.evaluation.scoring import MeanScores
+from possible_futures.datasets.cases import Cases
+from possible_futures.datasets.prefixes import Prefixes
+from possible_futures.evaluation.scoring import Scores
+from possible_futures.preprocessing.splitting import TrainTestSplit
 from possible_futures.runs.console import banner, step
-from possible_futures.runs.paths import OUTPUTS, Split, scores_file, split_file
+from possible_futures.runs.paths import OUTPUTS, Split, scores_file, split_file, test_prefixes_file
 from possible_futures.tables import MetricColumn, properties_table, scores_table
 
 
@@ -53,7 +55,7 @@ def main(config: TablesConfig) -> None:
         path = output / f'{name}.tex'
         with step(f'Writing {path}'):
             means = {
-                config.datasets[dataset]: MeanScores.load(scores_file(dataset)).table
+                config.datasets[dataset]: Scores.load(scores_file(dataset)).table
                 for dataset in table.datasets
             }
             decodings = {decoding: config.decodings[decoding] for decoding in table.decodings}
@@ -64,6 +66,7 @@ def main(config: TablesConfig) -> None:
             config.datasets[dataset]: TrainTestSplit(
                 train=Cases.load(split_file(dataset, Split.TRAIN)),
                 test=Cases.load(split_file(dataset, Split.TEST)),
+                test_prefixes=Prefixes.load(test_prefixes_file(dataset)),
             )
             for dataset in config.properties
         }

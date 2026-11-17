@@ -7,6 +7,7 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
 from possible_futures.datasets.cases import Cases
+from possible_futures.datasets.prefixes import Prefixes
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.preprocessing.events import (
     case_durations_days,
@@ -18,7 +19,13 @@ from possible_futures.preprocessing.events import (
 from possible_futures.preprocessing.splitting import out_of_time_split
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
-from possible_futures.runs.paths import Split, original_log_file, split_file, vocabulary_file
+from possible_futures.runs.paths import (
+    Split,
+    original_log_file,
+    split_file,
+    test_prefixes_file,
+    vocabulary_file,
+)
 
 
 @dataclass
@@ -33,11 +40,12 @@ ConfigStore.instance().store(name='preprocess_schema', node=PreprocessConfig)
 def main(config: PreprocessConfig) -> None:
     """Filter, sort, and split a raw log, and fit the vocabulary on its train split."""
     data = config.data
+    split = data.split
     banner(
         f'Preprocessing "{data.name}"',
         {
             'original log': original_log_file(data.name),
-            'split': f'{1 - data.test_fraction:.0%} train, {data.test_fraction:.0%} test, '
+            'split': f'{1 - split.test_fraction:.0%} train, {split.test_fraction:.0%} test, '
             'out of time',
             'splits': split_file(data.name, Split.TRAIN).parent,
         },
@@ -53,9 +61,9 @@ def main(config: PreprocessConfig) -> None:
         print(f'  {len(events):,} events over {num_cases(events):,} cases', flush=True)
 
     max_duration_days = float(
-        np.percentile(case_durations_days(events), data.max_case_duration_percentile)
+        np.percentile(case_durations_days(events), split.max_case_duration_percentile)
     )
-    max_length = int(np.ceil(np.percentile(case_lengths(events), data.max_case_length_percentile)))
+    max_length = int(np.ceil(np.percentile(case_lengths(events), split.max_case_length_percentile)))
     with step(
         f'Dropping the cases longer than {max_length} events or running longer than '
         f'{max_duration_days:,.1f} days'
@@ -68,34 +76,40 @@ def main(config: PreprocessConfig) -> None:
     with step(
         f'Debiasing the last {max_duration_days:,.1f} days and splitting the log out of time'
     ):
-        train, test = out_of_time_split(
-            kept, test_fraction=data.test_fraction, end_window_days=max_duration_days
+        train, test, test_prefixes = out_of_time_split(
+            kept, test_fraction=split.test_fraction, end_window_days=max_duration_days
         )
         _report_dropped(read=num_cases(kept), kept=len(train) + len(test))
 
-    with step('Writing the splits and the vocabulary'):
+    with step('Writing the splits, the test prefixes and the vocabulary'):
         train.save(split_file(data.name, Split.TRAIN))
         test.save(split_file(data.name, Split.TEST))
+        test_prefixes.save(test_prefixes_file(data.name))
         vocabulary = Vocabulary.fit(train.traces)
         vocabulary.save(vocabulary_file(data.name))
 
-    summary = pd.DataFrame({'train': _describe(train), 'test': _describe(test)}).T
+    summary = pd.DataFrame(
+        {
+            'train': _describe(train, prefixes=Prefixes.every(train)),
+            'test': _describe(test, prefixes=test_prefixes),
+        }
+    ).T
     print(
         f'\nPreprocessed "{data.name}": {len(vocabulary.activities)} train activities, cases of '
         f'at most {max_length} events and {max_duration_days:,.1f} days\n'
         f'{summary.to_string()}\n'
-        'Prefixes are the cuts between the lowest and the highest cut of every case.',
+        'Train counts every prefix with a non-empty suffix, test only the scored ones.',
         flush=True,
     )
 
 
-def _describe(cases: Cases) -> dict[str, str]:
-    """The size of a split and the shape of its cases, formatted for printing."""
+def _describe(cases: Cases, *, prefixes: Prefixes) -> dict[str, str]:
+    """The size of a split, its prefixes, and the shape of its cases, formatted for printing."""
     lengths = cases.case_lengths
     return {
         'cases': f'{len(cases):,}',
         'events': f'{lengths.sum():,}',
-        'prefixes': f'{cases.num_prefixes():,}',
+        'prefixes': f'{len(prefixes):,}',
         'variants': f'{cases.num_variants():,}',
         'activities': f'{cases.num_activities()}',
         'case length': f'{lengths.mean():.1f} ± {lengths.std(ddof=1):.1f}',
