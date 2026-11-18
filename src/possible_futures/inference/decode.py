@@ -4,8 +4,8 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from possible_futures.datasets.batches import PrefixBatch
-from possible_futures.datasets.prefix_dataset import PrefixDataset
+from possible_futures.datasets.collation import PrefixSuffixBatch
+from possible_futures.datasets.prefix_suffix import PrefixSuffixDataset
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.inference.draws import DecodingWriter
 from possible_futures.models.decoder import Decoder
@@ -14,7 +14,7 @@ from possible_futures.models.decoder import Decoder
 def write_draws(
     decoder: Decoder,
     *,
-    test: PrefixDataset,
+    test: PrefixSuffixDataset,
     vocabulary: Vocabulary,
     path: Path,
     num_draws: int,
@@ -37,7 +37,7 @@ def write_draws(
         test,
         batch_size=max(1, max_rows // num_draws),
         sampler=test.prefix_lengths().argsort(stable=True).tolist(),
-        collate_fn=PrefixBatch.collate,
+        collate_fn=PrefixSuffixBatch.collate,
     )
     with DecodingWriter(path, vocabulary) as writer:
         for batch in batches:

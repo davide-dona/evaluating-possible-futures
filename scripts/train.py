@@ -8,7 +8,7 @@ from hydra.core.config_store import ConfigStore
 from hydra.utils import instantiate
 from omegaconf import MISSING, OmegaConf
 
-from possible_futures.datasets.prefix_dataset import PrefixDataset
+from possible_futures.datasets.prefix_suffix import PrefixSuffixDataset
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.models.u_ed_lstm import UEDLSTM
 from possible_futures.preprocessing.cases import load_cases
@@ -71,7 +71,9 @@ def main(config: TrainConfig) -> None:
     )
     with step('Loading the train prefixes'):
         vocabulary = Vocabulary.load(vocabulary_file(name))
-        prefixes = PrefixDataset(load_cases(split_file(name, Split.TRAIN)), vocabulary=vocabulary)
+        pairs = PrefixSuffixDataset(
+            load_cases(split_file(name, Split.TRAIN)), vocabulary=vocabulary
+        )
 
     model = UEDLSTM(vocabulary_size=vocabulary.size, **config.model).to(device)
     print(f'{sum(p.numel() for p in model.parameters()):,} parameters', flush=True)
@@ -81,7 +83,7 @@ def main(config: TrainConfig) -> None:
     for record in train(
         model,
         optimizer,
-        prefixes=prefixes,
+        pairs=pairs,
         epochs=training.epochs,
         batch_size=training.batch_size,
         target_length=training.target_length,

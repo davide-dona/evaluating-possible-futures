@@ -7,7 +7,7 @@ import torch
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
-from possible_futures.datasets.prefix_dataset import PrefixDataset
+from possible_futures.datasets.prefix_suffix import PrefixSuffixDataset
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.inference.decode import write_draws
 from possible_futures.models.decoder import Decoder
@@ -84,7 +84,7 @@ def main(config: DecodeConfig) -> None:
     with step('Building the decoder and loading the test prefixes'):
         vocabulary = Vocabulary.load(vocabulary_file(name))
         train = load_cases(split_file(name, Split.TRAIN))
-        test = PrefixDataset(load_cases(split_file(name, Split.TEST)), vocabulary=vocabulary)
+        test = PrefixSuffixDataset(load_cases(split_file(name, Split.TEST)), vocabulary=vocabulary)
         decoder = build_decoder(
             decoder_config,
             data=config.data,
@@ -122,7 +122,9 @@ def build_decoder(
         case DecoderModel.U_ED_LSTM, Strategy.SAMPLED:
             return UEDLSTM.load(model_dir(data.name), device=device)
         case DecoderModel.UNCONDITIONAL, Strategy.SAMPLED:
-            return UnconditionalDecoder(train=PrefixDataset(train, vocabulary=vocabulary), rng=rng)
+            return UnconditionalDecoder(
+                train=PrefixSuffixDataset(train, vocabulary=vocabulary), rng=rng
+            )
         case DecoderModel.ORACLE | DecoderModel.MARKOV, strategy:
             if config.model is DecoderModel.MARKOV:
                 process = MarkovChain.fit([case.activities for case in train])

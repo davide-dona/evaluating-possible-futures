@@ -6,8 +6,8 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from possible_futures.datasets.batches import PrefixBatch
-from possible_futures.datasets.prefix_dataset import PrefixDataset
+from possible_futures.datasets.collation import PrefixSuffixBatch
+from possible_futures.datasets.prefix_suffix import PrefixSuffixDataset
 from possible_futures.models.u_ed_lstm import UEDLSTM
 
 
@@ -40,7 +40,7 @@ def train(
     model: UEDLSTM,
     optimizer: torch.optim.Optimizer,
     *,
-    prefixes: PrefixDataset,
+    pairs: PrefixSuffixDataset,
     epochs: int,
     batch_size: int,
     target_length: int,
@@ -56,7 +56,7 @@ def train(
     Args:
         model: The model, on `device`.
         optimizer: Steps the parameters of `model`.
-        prefixes: The train prefixes, shuffled anew every epoch.
+        pairs: The train prefixes and their suffixes, shuffled anew every epoch.
         batch_size: The number of prefixes in a batch.
         target_length: The number of events following each prefix that label it.
         weight_penalty: Weight of the sum of squared parameters in the loss.
@@ -64,10 +64,10 @@ def train(
         generator: Shuffles the prefixes.
     """
     batches = DataLoader(
-        prefixes,
+        pairs,
         batch_size=batch_size,
         shuffle=True,
-        collate_fn=PrefixBatch.collate,
+        collate_fn=PrefixSuffixBatch.collate,
         generator=generator,
     )
     for epoch in range(epochs):

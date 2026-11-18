@@ -2,7 +2,7 @@ from typing import Protocol
 
 import torch
 
-from possible_futures.datasets.batches import PrefixTokens
+from possible_futures.datasets.collation import PrefixTokens
 
 
 class Decoder(Protocol):

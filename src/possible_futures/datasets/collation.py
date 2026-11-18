@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 
-from possible_futures.datasets.prefix_dataset import PrefixItem
+from possible_futures.datasets.prefix_suffix import PrefixSuffix
 from possible_futures.datasets.vocabulary import SpecialToken
 
 
@@ -44,7 +44,7 @@ class PrefixTokens(NamedTuple):
         return self.tokens.gather(dim=1, index=index).squeeze(dim=1)
 
 
-class PrefixBatch(NamedTuple):
+class PrefixSuffixBatch(NamedTuple):
     """Some prefixes and the suffixes following them."""
 
     case_ids: tuple[str, ...]  # [B]
@@ -52,15 +52,15 @@ class PrefixBatch(NamedTuple):
     suffixes: torch.Tensor  # int64, PAD past each one's end, [B, S]
 
     @classmethod
-    def collate(cls, items: Sequence[PrefixItem]) -> Self:
+    def collate(cls, items: Sequence[PrefixSuffix]) -> Self:
         """Pad items into a batch, as the `collate_fn` of a `DataLoader`.
 
         Args:
             items: The prefixes and suffixes of the batch.
 
         Returns:
-            PrefixBatch: The prefixes padded to the longest prefix, the suffixes to the longest
-                suffix.
+            PrefixSuffixBatch: The prefixes padded to the longest prefix, the suffixes to the
+                longest suffix.
         """
         return cls(
             case_ids=tuple(item.case_id for item in items),

@@ -16,14 +16,14 @@ class OutOfTimeSplit:
 
     @classmethod
     def of(cls, cases: Sequence[Case], *, test_fraction: float, end_window_days: float) -> Self:
-        """Drop the cases starting in the last `end_window_days` of the log, then split the rest
-        at the start of the case at the `1 - test_fraction` quantile of case starts.
+        """Drop the cases starting in the last `end_window_days` of the log. The separation
+        time is computed as the start of the case at the `1 - test_fraction` quantile of the 
+        kept cases. 
 
-        Train keeps the cases finished before the separation, with their prefixes. Test keeps the
-        cases still running at it, with their prefixes narrowed to the scored ones. The longest
-        scored prefix is the last one that ends before the end window and leaves a non-empty
-        suffix. The shortest is the first one reaching past the separation, 1 for a case started
-        after it.
+        Train keeps the cases that end before the separation, with all their prefixes. Test keeps
+        the cases that end at or after it, with only their scored prefixes. A prefix is scored
+        when its last event falls after the separation and no later than the start of the end
+        window, and at least one event of the case follows it.
 
         Args:
             cases: The cases of the log.
@@ -34,16 +34,21 @@ class OutOfTimeSplit:
         Returns:
             OutOfTimeSplit: The cases of each split, in order of their start.
         """
+        # Filter out the cases starting in the last `end_window_days`
         window_start = max(case.end for case in cases) - pd.Timedelta(days=end_window_days)
         kept = sorted(
             (case for case in cases if case.start <= window_start),
             key=lambda case: (case.start, case.case_id),
         )
+        # Compute the separation time as the start of the first test case
         first_test_case = int(len(kept) * (1 - test_fraction))
         separation = kept[first_test_case].start
+        
         return cls(
+            # Train keeps the cases that end before the separation, with all their prefixes.
             train=[case for case in kept if case.end < separation],
             test=[
+                # Test keeps the cases that end at or after the separation, with only their scored prefixes.
                 replace(
                     case,
                     prefix_lengths=_scored_lengths(

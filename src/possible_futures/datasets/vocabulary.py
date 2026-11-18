@@ -12,8 +12,11 @@ import numpy as np
 class SpecialToken(IntEnum):
     """The tokens the vocabulary reserves ahead of the activities."""
 
+    # Padding token, fills sequences to the same length for batching.
     PAD = 0
+    # Unknown token, activity not in the train split.
     UNK = 1
+    # End-of-sequence token, marks the end of a sequence for the decoder.
     EOS = 2
 
     @property
@@ -23,10 +26,7 @@ class SpecialToken(IntEnum):
 
 @dataclass(frozen=True, slots=True)
 class Vocabulary:
-    """The tokens of the activities of the train split.
-
-    The special tokens come first, then the train activities in sorted order.
-    """
+    """Defines the mapping from activities to tokens, including special tokens."""
 
     # The activities of the train split, sorted.
     activities: tuple[str, ...]
@@ -62,8 +62,16 @@ class Vocabulary:
         )
 
     def save(self, path: Path) -> None:
+        """Write the activities to a JSON file, for later loading.
+        args:
+            path: The path to the JSON file.
+        """
         path.write_text(json.dumps({'activities': list(self.activities)}, indent=2) + '\n')
 
     @classmethod
     def load(cls, path: Path) -> Self:
+        """Load the activities from a JSON file, for later encoding.
+        args:
+            path: The path to the JSON file.
+        """
         return cls(activities=tuple(json.loads(path.read_text())['activities']))

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
-from possible_futures.datasets.batches import PrefixTokens
+from possible_futures.datasets.collation import PrefixTokens
 from possible_futures.datasets.vocabulary import SpecialToken, Vocabulary
 from possible_futures.models.decoder import Decoder
 

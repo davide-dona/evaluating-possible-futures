@@ -19,7 +19,9 @@ CASES_SCHEMA = pa.schema(
 
 @dataclass(frozen=True, slots=True)
 class Case:
-    """The events of one case, in time order, and the lengths of the prefixes taken from it."""
+    """A case, consisting of a sequence of activities and timestamps, 
+    as well as the bounds on the prefix lengths that can be taken from the case.
+    """
 
     case_id: str
     activities: tuple[str, ...]
@@ -31,24 +33,27 @@ class Case:
 
     @property
     def start(self) -> pd.Timestamp:
+        """Return the timestamp of the first event in the case."""
         return self.timestamps[0]
 
     @property
     def end(self) -> pd.Timestamp:
+        """Return the timestamp of the last event in the case."""
         return self.timestamps[-1]
 
     @property
     def duration_days(self) -> float:
+        """Return the duration of the case in days."""
         return (self.end - self.start).total_seconds() / 86_400.0
 
 
 def num_variants(cases: Sequence[Case]) -> int:
-    """The number of distinct activity sequences."""
+    """The number of distinct variants within the cases."""
     return len({case.activities for case in cases})
 
 
 def num_activities(cases: Sequence[Case]) -> int:
-    """The number of distinct activities."""
+    """The number of distinct activities within the cases"""
     return len({activity for case in cases for activity in case.activities})
 
 
@@ -58,11 +63,11 @@ def num_prefixes(cases: Sequence[Case]) -> int:
 
 
 def save_cases(cases: Sequence[Case], path: Path) -> None:
-    """Write the cases in `CASES_SCHEMA`, creating the directory if missing.
+    """Write the cases to a Parquet file.
 
     Args:
         cases: The cases to write.
-        path: The Parquet file written.
+        path: The Parquet file written. Creates the parent directories if they do not exist.
     """
     table = pa.table(
         {
@@ -79,7 +84,7 @@ def save_cases(cases: Sequence[Case], path: Path) -> None:
 
 
 def load_cases(path: Path) -> list[Case]:
-    """Read the cases written by `save_cases`.
+    """Read the cases from a Parquet file.
 
     Args:
         path: The Parquet file read.
