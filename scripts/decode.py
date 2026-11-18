@@ -7,9 +7,9 @@ import torch
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
-from possible_futures.datasets.cases import Cases
-from possible_futures.datasets.encoding import EncodedPrefixes
-from possible_futures.datasets.prefixes import Prefixes
+from possible_futures.datasets.cases import Case, load_cases
+from possible_futures.datasets.prefix_dataset import PrefixDataset
+from possible_futures.datasets.prefixes import every_prefix, load_scored_prefixes
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.inference.decode import write_draws
 from possible_futures.models.decoder import Decoder
@@ -24,7 +24,6 @@ from possible_futures.runs.paths import (
     decoding_file,
     model_dir,
     split_file,
-    test_prefixes_file,
     vocabulary_file,
 )
 from possible_futures.synthetic import SyntheticProcess
@@ -83,13 +82,11 @@ def main(config: DecodeConfig) -> None:
             'output': path,
         },
     )
-    with step('Building the decoder and encoding the test split'):
+    with step('Building the decoder and loading the test prefixes'):
         vocabulary = Vocabulary.load(vocabulary_file(name))
-        train = Cases.load(split_file(name, Split.TRAIN))
-        test = EncodedPrefixes.build(
-            Cases.load(split_file(name, Split.TEST)),
-            Prefixes.load(test_prefixes_file(name)),
-            vocabulary=vocabulary,
+        train = load_cases(split_file(name, Split.TRAIN))
+        test = PrefixDataset.of(
+            load_scored_prefixes(split_file(name, Split.TEST)), vocabulary=vocabulary
         )
         decoder = build_decoder(
             decoder_config,
@@ -107,7 +104,7 @@ def main(config: DecodeConfig) -> None:
             vocabulary=vocabulary,
             path=path,
             num_draws=config.num_draws,
-            max_steps=int(train.case_lengths.max()),
+            max_steps=max(len(case) for case in train),
             max_rows=config.max_rows,
             device=device,
         )
@@ -118,7 +115,7 @@ def build_decoder(
     config: DecoderConfig,
     *,
     data: DataConfig,
-    train: Cases,
+    train: list[Case],
     vocabulary: Vocabulary,
     rng: np.random.Generator,
     device: torch.device,
@@ -128,11 +125,12 @@ def build_decoder(
         case DecoderModel.U_ED_LSTM, Strategy.SAMPLED:
             return UEDLSTM.load(model_dir(data.name), device=device)
         case DecoderModel.UNCONDITIONAL, Strategy.SAMPLED:
-            prefixes = EncodedPrefixes.build(train, Prefixes.every(train), vocabulary=vocabulary)
-            return UnconditionalDecoder(train=prefixes, rng=rng)
+            return UnconditionalDecoder(
+                train=PrefixDataset.of(every_prefix(train), vocabulary=vocabulary), rng=rng
+            )
         case DecoderModel.ORACLE | DecoderModel.MARKOV, strategy:
             if config.model is DecoderModel.MARKOV:
-                process = MarkovChain.fit(train.traces)
+                process = MarkovChain.fit([case.activities for case in train])
             elif data.process is None:
                 raise ValueError(f'"{data.name}" is not simulated, so it has no oracle')
             else:

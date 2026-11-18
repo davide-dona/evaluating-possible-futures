@@ -1,10 +1,10 @@
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 
-from possible_futures.datasets.cases import Cases
-from possible_futures.preprocessing.splitting import TrainTestSplit
+from possible_futures.datasets.cases import Case, num_activities, num_variants
 
 DECIMALS = 3
 
@@ -69,12 +69,15 @@ def scores_table(
     return '\n'.join(lines)
 
 
-def properties_table(splits: Mapping[str, TrainTestSplit]) -> str:
+def properties_table(
+    cases: Mapping[str, Sequence[Case]], *, num_test_prefixes: Mapping[str, int]
+) -> str:
     """A booktabs `tabular` of the size and case lengths of every log and its test prefixes.
 
     Args:
-        splits: The train and test splits of every preprocessed log, keyed by the name the
-            table prints.
+        cases: The train and test cases of every preprocessed log, keyed by the name the table
+            prints.
+        num_test_prefixes: The number of scored test prefixes of every log, keyed the same way.
 
     Returns:
         The table, to `\\input` inside a `table` environment.
@@ -86,17 +89,16 @@ def properties_table(splits: Mapping[str, TrainTestSplit]) -> str:
         r' & Test prefixes \\',
         r'\midrule',
     ]
-    for name, split in splits.items():
-        cases = Cases.concat([split.train, split.test])
-        lengths = cases.case_lengths
+    for name, log in cases.items():
+        lengths = np.array([len(case) for case in log])
         cells = [
             name,
-            _grouped_digits(len(cases)),
+            _grouped_digits(len(log)),
             _grouped_digits(int(lengths.sum())),
-            _grouped_digits(cases.num_variants()),
-            _grouped_digits(cases.num_activities()),
+            _grouped_digits(num_variants(log)),
+            _grouped_digits(num_activities(log)),
             f'{lengths.mean():.1f}+{lengths.std(ddof=1):.1f}',
-            _grouped_digits(len(split.test_prefixes)),
+            _grouped_digits(num_test_prefixes[name]),
         ]
         lines.append(' & '.join(cells) + r' \\')
     lines += [r'\bottomrule', r'\end{tabular}', '']

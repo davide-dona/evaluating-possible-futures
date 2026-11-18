@@ -30,11 +30,6 @@ def split_file(dataset: str, split: Split) -> Path:
     return DATA / dataset / 'processed' / f'{split}.parquet'
 
 
-def test_prefixes_file(dataset: str) -> Path:
-    """The test prefixes that are scored."""
-    return DATA / dataset / 'processed' / 'test_prefixes.parquet'
-
-
 def vocabulary_file(dataset: str) -> Path:
     return DATA / dataset / 'processed' / 'vocabulary.json'
 

@@ -4,12 +4,11 @@ import hydra
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
-from possible_futures.datasets.cases import Cases
-from possible_futures.datasets.prefixes import Prefixes
+from possible_futures.datasets.cases import load_cases
+from possible_futures.datasets.prefixes import load_scored_prefixes
 from possible_futures.evaluation.scoring import Scores
-from possible_futures.preprocessing.splitting import TrainTestSplit
 from possible_futures.runs.console import banner, step
-from possible_futures.runs.paths import OUTPUTS, Split, scores_file, split_file, test_prefixes_file
+from possible_futures.runs.paths import OUTPUTS, Split, scores_file, split_file
 from possible_futures.tables import MetricColumn, properties_table, scores_table
 
 
@@ -62,15 +61,13 @@ def main(config: TablesConfig) -> None:
             path.write_text(scores_table(means, decodings=decodings, metrics=metrics))
     path = output / 'properties.tex'
     with step(f'Writing {path}'):
-        splits = {
-            config.datasets[dataset]: TrainTestSplit(
-                train=Cases.load(split_file(dataset, Split.TRAIN)),
-                test=Cases.load(split_file(dataset, Split.TEST)),
-                test_prefixes=Prefixes.load(test_prefixes_file(dataset)),
-            )
-            for dataset in config.properties
-        }
-        path.write_text(properties_table(splits))
+        cases, num_test_prefixes = {}, {}
+        for dataset in config.properties:
+            name = config.datasets[dataset]
+            test_file = split_file(dataset, Split.TEST)
+            cases[name] = load_cases(split_file(dataset, Split.TRAIN)) + load_cases(test_file)
+            num_test_prefixes[name] = len(load_scored_prefixes(test_file))
+        path.write_text(properties_table(cases, num_test_prefixes=num_test_prefixes))
 
 
 if __name__ == '__main__':

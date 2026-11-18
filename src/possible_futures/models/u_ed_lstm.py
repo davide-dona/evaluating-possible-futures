@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from safetensors.torch import load_file, save_file
 from torch import nn
 
-from possible_futures.datasets.encoding import PrefixTokens
+from possible_futures.datasets.batches import PrefixTokens
 from possible_futures.datasets.vocabulary import SpecialToken
 from possible_futures.models.decoder import Decoder
 from possible_futures.models.lstm import GateDropoutStack, GateMasks, LSTMState

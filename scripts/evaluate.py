@@ -7,7 +7,7 @@ from hydra.core.config_store import ConfigStore
 from hydra.utils import instantiate
 from omegaconf import MISSING
 
-from possible_futures.datasets.cases import Cases
+from possible_futures.datasets.cases import load_cases
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.evaluation.scoring import Scores, observed_suffixes, score_forecasts
 from possible_futures.inference.draws import Decoding
@@ -55,7 +55,7 @@ def main(config: EvaluateConfig) -> None:
         },
     )
     vocabulary = Vocabulary.load(vocabulary_file(name))
-    test = Cases.load(split_file(name, Split.TEST))
+    test = load_cases(split_file(name, Split.TEST))
     means = {}
     for path in decoding_files:
         with step(f'Scoring the {path.stem} suffixes'):

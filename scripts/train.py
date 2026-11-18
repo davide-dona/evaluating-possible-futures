@@ -8,9 +8,10 @@ from hydra.core.config_store import ConfigStore
 from hydra.utils import instantiate
 from omegaconf import MISSING, OmegaConf
 
-from possible_futures.datasets.cases import Cases
-from possible_futures.datasets.encoding import EncodedPrefixes
-from possible_futures.datasets.prefixes import Prefixes
+from possible_futures.datasets.batches import train_loader
+from possible_futures.datasets.cases import load_cases
+from possible_futures.datasets.prefix_dataset import PrefixDataset
+from possible_futures.datasets.prefixes import every_prefix
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.models.u_ed_lstm import UEDLSTM
 from possible_futures.runs.configs import DataConfig
@@ -70,10 +71,15 @@ def main(config: TrainConfig) -> None:
             'output': model_dir(name),
         },
     )
-    with step('Encoding the train split'):
+    with step('Loading the train prefixes'):
         vocabulary = Vocabulary.load(vocabulary_file(name))
-        cases = Cases.load(split_file(name, Split.TRAIN))
-        prefixes = EncodedPrefixes.build(cases, Prefixes.every(cases), vocabulary=vocabulary)
+        prefixes = every_prefix(load_cases(split_file(name, Split.TRAIN)))
+        batches = train_loader(
+            PrefixDataset.of(prefixes, vocabulary=vocabulary),
+            batch_size=training.batch_size,
+            target_length=training.target_length,
+            generator=torch.Generator().manual_seed(config.seed),
+        )
 
     model = UEDLSTM(vocabulary_size=vocabulary.size, **config.model).to(device)
     print(f'{sum(p.numel() for p in model.parameters()):,} parameters', flush=True)
@@ -83,10 +89,8 @@ def main(config: TrainConfig) -> None:
     for record in train(
         model,
         optimizer,
-        prefixes=prefixes,
+        batches=batches,
         epochs=training.epochs,
-        batch_size=training.batch_size,
-        target_length=training.target_length,
         weight_penalty=training.weight_penalty,
         grad_clip_norm=training.grad_clip_norm,
         teacher_forcing=OmegaConf.to_object(training.teacher_forcing),

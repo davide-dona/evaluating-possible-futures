@@ -8,20 +8,17 @@ from typing import ClassVar, Self
 import pandas as pd
 import torch
 
-from possible_futures.datasets.cases import Cases
+from possible_futures.datasets.cases import Case
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.evaluation.metrics import Metric
 from possible_futures.inference.draws import Forecast
 
 
 def observed_suffixes(
-    forecasts: Sequence[Forecast], test: Cases, vocabulary: Vocabulary
+    forecasts: Sequence[Forecast], test: Sequence[Case], vocabulary: Vocabulary
 ) -> list[tuple[int, ...]]:
     """The observed suffix of the prefix of every forecast, as tokens."""
-    traces = {
-        case_id: tuple(vocabulary.encode(trace).tolist())
-        for case_id, trace in zip(test.case_ids, test.traces, strict=True)
-    }
+    traces = {case.case_id: tuple(vocabulary.encode(case.activities).tolist()) for case in test}
     return [traces[forecast.case_id][forecast.prefix_length :] for forecast in forecasts]
 
 
