@@ -6,9 +6,14 @@ import pandas as pd
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
-from possible_futures.datasets.cases import Case, num_activities, num_variants, save_cases
-from possible_futures.datasets.prefixes import Prefix, every_prefix, save_scored_cases
 from possible_futures.datasets.vocabulary import Vocabulary
+from possible_futures.preprocessing.cases import (
+    Case,
+    num_activities,
+    num_prefixes,
+    num_variants,
+    save_cases,
+)
 from possible_futures.preprocessing.log import drop_outliers, read_log
 from possible_futures.preprocessing.splitting import OutOfTimeSplit
 from possible_futures.runs.configs import DataConfig
@@ -76,14 +81,14 @@ def main(config: PreprocessConfig) -> None:
 
     with step('Writing the splits and the vocabulary'):
         save_cases(splits.train, path=split_file(data.name, Split.TRAIN))
-        save_scored_cases(splits.test, scored=splits.scored, path=split_file(data.name, Split.TEST))
+        save_cases(splits.test, path=split_file(data.name, Split.TEST))
         vocabulary = Vocabulary.fit([case.activities for case in splits.train])
         vocabulary.save(vocabulary_file(data.name))
 
     summary = pd.DataFrame(
         {
-            'train': _describe(splits.train, prefixes=every_prefix(splits.train)),
-            'test': _describe(splits.test, prefixes=splits.scored),
+            'train': _describe(splits.train),
+            'test': _describe(splits.test),
         }
     ).T
     print(
@@ -95,13 +100,13 @@ def main(config: PreprocessConfig) -> None:
     )
 
 
-def _describe(cases: list[Case], *, prefixes: list[Prefix]) -> dict[str, str]:
+def _describe(cases: list[Case]) -> dict[str, str]:
     """The size of a split, its prefixes, and the shape of its cases, formatted for printing."""
     lengths = np.array([len(case) for case in cases])
     return {
         'cases': f'{len(cases):,}',
         'events': f'{lengths.sum():,}',
-        'prefixes': f'{len(prefixes):,}',
+        'prefixes': f'{num_prefixes(cases):,}',
         'variants': f'{num_variants(cases):,}',
         'activities': f'{num_activities(cases)}',
         'case length': f'{lengths.mean():.1f} ± {lengths.std(ddof=1):.1f}',

@@ -4,9 +4,8 @@ import hydra
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
-from possible_futures.datasets.cases import load_cases
-from possible_futures.datasets.prefixes import load_scored_prefixes
 from possible_futures.evaluation.scoring import Scores
+from possible_futures.preprocessing.cases import load_cases, num_prefixes
 from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import OUTPUTS, Split, scores_file, split_file
 from possible_futures.tables import MetricColumn, properties_table, scores_table
@@ -64,9 +63,9 @@ def main(config: TablesConfig) -> None:
         cases, num_test_prefixes = {}, {}
         for dataset in config.properties:
             name = config.datasets[dataset]
-            test_file = split_file(dataset, Split.TEST)
-            cases[name] = load_cases(split_file(dataset, Split.TRAIN)) + load_cases(test_file)
-            num_test_prefixes[name] = len(load_scored_prefixes(test_file))
+            test = load_cases(split_file(dataset, Split.TEST))
+            cases[name] = load_cases(split_file(dataset, Split.TRAIN)) + test
+            num_test_prefixes[name] = num_prefixes(test)
         path.write_text(properties_table(cases, num_test_prefixes=num_test_prefixes))
 
 

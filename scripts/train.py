@@ -9,11 +9,10 @@ from hydra.utils import instantiate
 from omegaconf import MISSING, OmegaConf
 
 from possible_futures.datasets.batches import train_loader
-from possible_futures.datasets.cases import load_cases
 from possible_futures.datasets.prefix_dataset import PrefixDataset
-from possible_futures.datasets.prefixes import every_prefix
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.models.u_ed_lstm import UEDLSTM
+from possible_futures.preprocessing.cases import load_cases
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, format_duration, step
 from possible_futures.runs.paths import Split, model_dir, split_file, vocabulary_file
@@ -73,9 +72,8 @@ def main(config: TrainConfig) -> None:
     )
     with step('Loading the train prefixes'):
         vocabulary = Vocabulary.load(vocabulary_file(name))
-        prefixes = every_prefix(load_cases(split_file(name, Split.TRAIN)))
         batches = train_loader(
-            PrefixDataset.of(prefixes, vocabulary=vocabulary),
+            PrefixDataset(load_cases(split_file(name, Split.TRAIN)), vocabulary=vocabulary),
             batch_size=training.batch_size,
             target_length=training.target_length,
             generator=torch.Generator().manual_seed(config.seed),

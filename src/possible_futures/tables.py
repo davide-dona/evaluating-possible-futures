@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from possible_futures.datasets.cases import Case, num_activities, num_variants
+from possible_futures.preprocessing.cases import Case, num_activities, num_variants
 
 DECIMALS = 3
 

@@ -8,10 +8,10 @@ from typing import ClassVar, Self
 import pandas as pd
 import torch
 
-from possible_futures.datasets.cases import Case
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.evaluation.metrics import Metric
 from possible_futures.inference.draws import Forecast
+from possible_futures.preprocessing.cases import Case
 
 
 def observed_suffixes(
