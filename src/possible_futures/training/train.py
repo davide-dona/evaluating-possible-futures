@@ -1,11 +1,13 @@
 import time
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 import numpy as np
 import torch
+from torch.utils.data import DataLoader
 
-from possible_futures.datasets.batches import TrainBatch
+from possible_futures.datasets.batches import PrefixBatch
+from possible_futures.datasets.prefix_dataset import PrefixDataset
 from possible_futures.models.u_ed_lstm import UEDLSTM
 
 
@@ -38,29 +40,43 @@ def train(
     model: UEDLSTM,
     optimizer: torch.optim.Optimizer,
     *,
-    batches: Iterable[TrainBatch],
+    prefixes: PrefixDataset,
     epochs: int,
+    batch_size: int,
+    target_length: int,
     weight_penalty: float,
     grad_clip_norm: float,
     teacher_forcing: TeacherForcing,
     device: torch.device,
     rng: np.random.Generator,
+    generator: torch.Generator,
 ) -> Iterator[EpochRecord]:
     """Train for `epochs` epochs, yielding the record of each as it ends.
 
     Args:
         model: The model, on `device`.
         optimizer: Steps the parameters of `model`.
-        batches: The train batches, iterated once per epoch.
+        prefixes: The train prefixes, shuffled anew every epoch.
+        batch_size: The number of prefixes in a batch.
+        target_length: The number of events following each prefix that label it.
         weight_penalty: Weight of the sum of squared parameters in the loss.
         rng: Flips the teacher forcing coins.
+        generator: Shuffles the prefixes.
     """
+    batches = DataLoader(
+        prefixes,
+        batch_size=batch_size,
+        shuffle=True,
+        collate_fn=PrefixBatch.collate,
+        generator=generator,
+    )
     for epoch in range(epochs):
         started = time.perf_counter()
         ratio = teacher_forcing.ratio(epoch=epoch, epochs=epochs)
         total, rows = 0.0, 0
         for batch in batches:
-            inputs, targets = batch.inputs.to(device), batch.targets.to(device)
+            inputs = batch.prefixes.to(device)
+            targets = batch.targets(width=target_length).to(device)
             forced = rng.random(size=targets.shape[1] - 1) < ratio
             logits = model(inputs, targets, forced=forced.tolist())
             loss = model.loss(logits=logits, targets=targets, weight_penalty=weight_penalty)

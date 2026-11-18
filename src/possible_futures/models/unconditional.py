@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
-from possible_futures.datasets.batches import PrefixTokens, pad_suffixes
+from possible_futures.datasets.batches import PrefixBatch, PrefixTokens
 from possible_futures.datasets.prefix_dataset import PrefixDataset
 from possible_futures.models.decoder import Decoder
 
@@ -22,6 +22,6 @@ class UnconditionalDecoder(Decoder):
     def draw(self, prefixes: PrefixTokens, *, num_draws: int, max_steps: int) -> torch.Tensor:
         batch_size = len(prefixes.lengths)
         drawn = self.rng.integers(len(self.train), size=batch_size * num_draws)
-        tokens = pad_suffixes([self.train[index] for index in drawn])  # [B * S, L]
+        tokens = PrefixBatch.collate([self.train[index] for index in drawn]).suffixes  # [B * S, L]
         # [B * S, L] -> [B, S, L]
         return tokens.view(batch_size, num_draws, -1).to(prefixes.lengths.device)

@@ -2,8 +2,9 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from torch.utils.data import DataLoader
 
-from possible_futures.datasets.batches import decode_loader
+from possible_futures.datasets.batches import PrefixBatch
 from possible_futures.datasets.prefix_dataset import PrefixDataset
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.inference.draws import DecodingWriter
@@ -31,8 +32,15 @@ def write_draws(
     Returns:
         The number of prefixes written.
     """
+    # Shortest first, so prefixes of similar length share a batch and little of it is padding.
+    batches = DataLoader(
+        test,
+        batch_size=max(1, max_rows // num_draws),
+        sampler=test.prefix_lengths().argsort(stable=True).tolist(),
+        collate_fn=PrefixBatch.collate,
+    )
     with DecodingWriter(path, vocabulary) as writer:
-        for batch in decode_loader(test, batch_size=max(1, max_rows // num_draws)):
+        for batch in batches:
             tokens = decoder.draw(
                 batch.prefixes.to(device),
                 num_draws=num_draws,
