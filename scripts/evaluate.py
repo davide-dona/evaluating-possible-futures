@@ -2,13 +2,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import hydra
-import pandas as pd
 from hydra.core.config_store import ConfigStore
 from hydra.utils import instantiate
 from omegaconf import MISSING
 
 from possible_futures.datasets.vocabulary import Vocabulary
-from possible_futures.evaluation.scoring import Scores, observed_suffixes, score_forecasts
+from possible_futures.evaluation.scoring import load_scores, mean_scores, save_scores
 from possible_futures.inference.draws import Decoding
 from possible_futures.preprocessing.cases import load_cases
 from possible_futures.runs.configs import DataConfig
@@ -56,18 +55,18 @@ def main(config: EvaluateConfig) -> None:
     )
     vocabulary = Vocabulary.load(vocabulary_file(name))
     test = load_cases(split_file(name, Split.TEST))
+    traces = {case.case_id: tuple(vocabulary.encode(case.activities).tolist()) for case in test}
     means = {}
     for path in decoding_files:
         with step(f'Scoring the {path.stem} suffixes'):
-            forecasts = Decoding.load(path, vocabulary).forecasts
-            observed = observed_suffixes(forecasts, test=test, vocabulary=vocabulary)
-            per_forecast = score_forecasts(
-                forecasts, observed=observed, metrics=metrics, workers=config.workers
+            means[path.stem] = mean_scores(
+                decoding=Decoding.load(path, vocabulary),
+                traces=traces,
+                metrics=metrics,
+                workers=config.workers,
             )
-            means[path.stem] = per_forecast.mean()
-    scores = Scores(table=pd.DataFrame.from_dict(means, orient='index'))
-    scores.save(output)
-    print(f'Wrote the mean scores to {output}\n\n{scores.table.round(4).to_string()}')
+    save_scores(means=means, path=output)
+    print(f'Wrote the mean scores to {output}\n\n{load_scores(output).round(4).to_string()}')
 
 
 if __name__ == '__main__':

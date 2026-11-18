@@ -1,74 +1,79 @@
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import ClassVar, Self
 
+import numpy as np
 import pandas as pd
 import torch
 
-from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.evaluation.metrics import Metric
-from possible_futures.inference.draws import Forecast
-from possible_futures.preprocessing.cases import Case
+from possible_futures.inference.draws import Decoding
+
+# The scores file has one row per decoding, indexed by its name in this column, and one column
+# per metric.
+_DECODING_COLUMN = 'decoding'
 
 
-def observed_suffixes(
-    forecasts: Sequence[Forecast], test: Sequence[Case], vocabulary: Vocabulary
-) -> list[tuple[int, ...]]:
-    """The observed suffix of the prefix of every forecast, as tokens."""
-    traces = {case.case_id: tuple(vocabulary.encode(case.activities).tolist()) for case in test}
-    return [traces[forecast.case_id][forecast.prefix_length :] for forecast in forecasts]
-
-
-def score_forecasts(
-    forecasts: Sequence[Forecast],
-    observed: Sequence[tuple[int, ...]],
+def mean_scores(
+    decoding: Decoding,
     *,
+    traces: Mapping[str, tuple[int, ...]],
     metrics: Mapping[str, Metric],
     workers: int,
-) -> pd.DataFrame:
-    """Score every forecast against its observed suffix under every metric.
+) -> dict[str, float]:
+    """Score every forecast of a decoding against its observed suffix and average the scores.
 
     Args:
-        metrics: The metrics, keyed by the column they are written to. Each must pickle, to
-            reach the worker processes.
+        decoding: The forecasts scored.
+        traces: The tokens of every test case, keyed by its case id.
+        metrics: The metrics, keyed by their name. Each must pickle, to reach the worker
+            processes.
         workers: Processes scoring the forecasts in parallel.
 
     Returns:
-        One row per forecast, in the order of `forecasts`, with its score under every metric.
+        dict[str, float]: The mean score of the forecasts under every metric, keyed like
+            `metrics`.
     """
-    scores = pd.DataFrame(index=range(len(forecasts)))
+    forecasts = decoding.forecasts
     draws = [forecast.draws for forecast in forecasts]
+    observed = [traces[forecast.case_id][forecast.prefix_length :] for forecast in forecasts]
     chunksize = max(1, len(forecasts) // (16 * workers))
+    score = partial(_scores, metrics=list(metrics.values()))
     # One torch thread per process, so the processes do not oversubscribe the cores.
     with ProcessPoolExecutor(
         max_workers=workers, initializer=torch.set_num_threads, initargs=(1,)
     ) as pool:
-        for name, metric in metrics.items():
-            score = partial(_score, metric=metric)
-            scores[name] = list(pool.map(score, draws, observed, chunksize=chunksize))
-    return scores
+        scores = np.array(list(pool.map(score, draws, observed, chunksize=chunksize)))  # [N, M]
+    return dict(zip(metrics, scores.mean(axis=0).tolist(), strict=True))
 
 
-def _score(draws: Sequence[tuple[int, ...]], observed: tuple[int, ...], *, metric: Metric) -> float:
-    return metric(draws=draws, observed=observed)
+def _scores(
+    draws: Sequence[tuple[int, ...]], observed: tuple[int, ...], *, metrics: Sequence[Metric]
+) -> list[float]:
+    return [metric(draws=draws, observed=observed) for metric in metrics]
 
 
-@dataclass(frozen=True, slots=True)
-class Scores:
-    """The mean score of every decoding under every metric."""
+def save_scores(means: Mapping[str, Mapping[str, float]], path: Path) -> None:
+    """Write the mean scores of every decoding as CSV.
 
-    INDEX: ClassVar[str] = 'decoding'
+    Args:
+        means: The mean score of every decoding under every metric, keyed by decoding name and
+            then by metric name.
+        path: The CSV file written. Creates the parent directories if they do not exist.
+    """
+    table = pd.DataFrame.from_dict(means, orient='index').rename_axis(_DECODING_COLUMN)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    table.to_csv(path)
 
-    table: pd.DataFrame  # one row per decoding, indexed by its name, one column per metric
 
-    def save(self, path: Path) -> None:
-        """Write the scores as CSV, creating the directory if missing."""
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self.table.rename_axis(self.INDEX).to_csv(path)
+def load_scores(path: Path) -> pd.DataFrame:
+    """Read the mean scores of every decoding from a CSV file.
 
-    @classmethod
-    def load(cls, path: Path) -> Self:
-        return cls(table=pd.read_csv(path, index_col=cls.INDEX))
+    Args:
+        path: The CSV file read.
+
+    Returns:
+        pd.DataFrame: One row per decoding, indexed by its name, one column per metric.
+    """
+    return pd.read_csv(path, index_col=_DECODING_COLUMN)

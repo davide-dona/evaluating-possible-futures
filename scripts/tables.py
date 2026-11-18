@@ -4,7 +4,7 @@ import hydra
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
-from possible_futures.evaluation.scoring import Scores
+from possible_futures.evaluation.scoring import load_scores
 from possible_futures.preprocessing.cases import load_cases, num_prefixes
 from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import OUTPUTS, Split, scores_file, split_file
@@ -53,7 +53,7 @@ def main(config: TablesConfig) -> None:
         path = output / f'{name}.tex'
         with step(f'Writing {path}'):
             means = {
-                config.datasets[dataset]: Scores.load(scores_file(dataset)).table
+                config.datasets[dataset]: load_scores(scores_file(dataset))
                 for dataset in table.datasets
             }
             decodings = {decoding: config.decodings[decoding] for decoding in table.decodings}
