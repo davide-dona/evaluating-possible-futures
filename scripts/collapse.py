@@ -6,12 +6,11 @@ from hydra.core.config_store import ConfigStore
 from hydra.utils import instantiate
 from omegaconf import MISSING
 
-from possible_futures.datasets.vocabulary import Vocabulary
-from possible_futures.inference.draws import Decoding
+from possible_futures.inference.decoding import load_decoding, save_decoding
 from possible_futures.inference.medoid import medoids
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
-from possible_futures.runs.paths import decoding_file, sampled_file, vocabulary_file
+from possible_futures.runs.paths import decoding_file, sampled_file
 
 
 @dataclass
@@ -40,10 +39,9 @@ def main(config: CollapseConfig) -> None:
         },
     )
     with step('Taking the medoid of every prefix'):
-        vocabulary = Vocabulary.load(vocabulary_file(name))
-        collapsed = medoids(Decoding.load(sampled, vocabulary), distance=distance)
-        collapsed.save(path, vocabulary)
-        print(f'  {len(collapsed.forecasts):,} prefixes', flush=True)
+        collapsed = medoids(load_decoding(sampled), distance=distance)
+        save_decoding(collapsed, path)
+        print(f'  {len(collapsed):,} prefixes', flush=True)
 
 
 if __name__ == '__main__':

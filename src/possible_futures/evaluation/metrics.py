@@ -14,7 +14,7 @@ class Metric(Protocol):
     name: str  # labels the mean score in the scores files and tables
 
     def __call__(self, *, draws: Sequence[tuple[int, ...]], observed: tuple[int, ...]) -> float:
-        """The score of the draws, each a tuple of tokens."""
+        """The score of the draws, each a tuple of the ids `activity_ids` gives its activities."""
         ...
 
 

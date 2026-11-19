@@ -8,25 +8,23 @@ import numpy as np
 import torch
 
 from possible_futures.cases import Case
-from possible_futures.datasets.vocabulary import Vocabulary
+from possible_futures.distances import activity_ids
 from possible_futures.evaluation.metrics import Metric
-from possible_futures.inference.draws import Decoding
+from possible_futures.inference.decoding import Forecast
 
 
 def mean_scores(
-    decoding: Decoding,
+    forecasts: Sequence[Forecast],
     *,
     test: Sequence[Case],
-    vocabulary: Vocabulary,
     metrics: Sequence[Metric],
     workers: int,
 ) -> dict[str, float]:
     """Score every forecast of a decoding against its observed suffix and average the scores.
 
     Args:
-        decoding: The forecasts scored.
+        forecasts: The forecasts of the decoding scored.
         test: The test cases, whose suffixes the forecasts are scored against.
-        vocabulary: Maps the activities of the test cases to the tokens of the draws.
         metrics: The metrics. Each must pickle, to reach the worker processes.
         workers: Processes scoring the forecasts in parallel.
 
@@ -35,12 +33,9 @@ def mean_scores(
             name.
     """
     cases = {case.case_id: case for case in test}
-    forecasts = decoding.forecasts
+    cases = {case.case_id: case for case in test}
     draws = [forecast.draws for forecast in forecasts]
-    observed = [
-        tuple(vocabulary.encode(cases[forecast.case_id].suffix(forecast.prefix_length)).tolist())
-        for forecast in forecasts
-    ]
+    observed = [cases[forecast.case_id].suffix(forecast.prefix_length) for forecast in forecasts]
     chunksize = max(1, len(forecasts) // (16 * workers))
     score = partial(_scores, metrics=metrics)
     # One torch thread per process, so the processes do not oversubscribe the cores.
@@ -53,9 +48,10 @@ def mean_scores(
 
 
 def _scores(
-    draws: Sequence[tuple[int, ...]], observed: tuple[int, ...], *, metrics: Sequence[Metric]
+    draws: Sequence[tuple[str, ...]], observed: tuple[str, ...], *, metrics: Sequence[Metric]
 ) -> list[float]:
-    return [metric(draws=draws, observed=observed) for metric in metrics]
+    draw_ids, (observed_ids,) = activity_ids(draws, [observed])
+    return [metric(draws=draw_ids, observed=observed_ids) for metric in metrics]
 
 
 def save_scores(means: Mapping[str, float], path: Path) -> None:

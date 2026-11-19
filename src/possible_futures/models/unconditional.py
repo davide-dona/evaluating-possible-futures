@@ -1,10 +1,10 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Self
 
 import numpy as np
-import torch
 
-from possible_futures.datasets.collation import PrefixSuffixBatch, PrefixTokens
-from possible_futures.datasets.prefix_suffix import PrefixSuffixDataset
+from possible_futures.cases import Case
 from possible_futures.models.decoder import Decoder
 
 
@@ -16,14 +16,29 @@ class UnconditionalDecoder(Decoder):
     at `max_steps`.
     """
 
-    train: PrefixSuffixDataset
+    suffixes: tuple[tuple[str, ...], ...]  # the suffix of every train prefix
     rng: np.random.Generator
 
-    def draw(self, prefixes: PrefixTokens, *, num_draws: int, max_steps: int) -> torch.Tensor:
-        batch_size = len(prefixes.lengths)
-        drawn = self.rng.integers(len(self.train), size=batch_size * num_draws)
-        tokens = PrefixSuffixBatch.collate(
-            [self.train[index] for index in drawn]
-        ).suffixes  # [B * S, L]
-        # [B * S, L] -> [B, S, L]
-        return tokens.view(batch_size, num_draws, -1).to(prefixes.lengths.device)
+    @classmethod
+    def fit(cls, cases: Sequence[Case], *, rng: np.random.Generator) -> Self:
+        """Collect the suffix of every prefix of the cases.
+
+        Args:
+            cases: The train cases.
+            rng: Draws the suffixes.
+
+        Returns:
+            UnconditionalDecoder: The decoder drawing among the suffixes, case after case and
+                shortest prefix first within a case.
+        """
+        suffixes = tuple(case.suffix(length) for case in cases for length in case.prefix_lengths)
+        return cls(suffixes=suffixes, rng=rng)
+
+    def draw(
+        self, prefixes: Sequence[tuple[str, ...]], *, num_draws: int, max_steps: int
+    ) -> list[list[tuple[str, ...]]]:
+        drawn = self.rng.integers(len(self.suffixes), size=len(prefixes) * num_draws).tolist()
+        return [
+            [self.suffixes[index] for index in drawn[start : start + num_draws]]
+            for start in range(0, len(drawn), num_draws)
+        ]

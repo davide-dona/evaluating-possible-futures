@@ -1,55 +1,51 @@
+from collections.abc import Sequence
 from pathlib import Path
 
-import numpy as np
-import torch
-from torch.utils.data import DataLoader
-
-from possible_futures.datasets.collation import PrefixSuffixBatch
-from possible_futures.datasets.prefix_suffix import PrefixSuffixDataset
-from possible_futures.datasets.vocabulary import Vocabulary
-from possible_futures.inference.draws import DecodingWriter
+from possible_futures.cases import Case
+from possible_futures.inference.decoding import DecodingWriter, Forecast
 from possible_futures.models.decoder import Decoder
 
 
-def write_draws(
+def write_decoding(
     decoder: Decoder,
     *,
-    test: PrefixSuffixDataset,
-    vocabulary: Vocabulary,
+    test: Sequence[Case],
     path: Path,
     num_draws: int,
     max_steps: int,
     max_rows: int,
-    device: torch.device,
 ) -> int:
-    """Draw suffixes for every test prefix from `decoder` and save them to `path`.
+    """Draw suffixes for every prefix of the test cases and save them to `path`.
 
     Args:
-        max_steps: The most events a draw holds.
-        max_rows: The most draws held at once.
-        device: Where the prefixes are sent to be decoded.
+        decoder: The decoder the suffixes are drawn from.
+        test: The test cases, each with the lengths of its scored prefixes.
+        path: The Parquet file the forecasts are written to.
+        num_draws: The number of suffixes drawn for each prefix.
+        max_steps: The most activities a suffix holds.
+        max_rows: The most suffixes drawn at once.
 
     Returns:
-        The number of prefixes written.
+        int: The number of prefixes written.
     """
     # Shortest first, so prefixes of similar length share a batch and little of it is padding.
-    batches = DataLoader(
-        test,
-        batch_size=max(1, max_rows // num_draws),
-        sampler=test.prefix_lengths().argsort(stable=True).tolist(),
-        collate_fn=PrefixSuffixBatch.collate,
+    prefixes = sorted(
+        ((case, length) for case in test for length in case.prefix_lengths),
+        key=lambda prefix: prefix[1],
     )
-    with DecodingWriter(path, vocabulary) as writer:
-        for batch in batches:
-            tokens = decoder.draw(
-                batch.prefixes.to(device),
+    batch_size = max(1, max_rows // num_draws)
+    with DecodingWriter(path) as writer:
+        for start in range(0, len(prefixes), batch_size):
+            batch = prefixes[start : start + batch_size]
+            draws = decoder.draw(
+                [case.prefix(length) for case, length in batch],
                 num_draws=num_draws,
                 max_steps=max_steps,
             )
             writer.write(
-                case_ids=np.array(batch.case_ids, dtype=object),
-                prefix_lengths=batch.prefixes.lengths.numpy(),
-                tokens=tokens.flatten(end_dim=1).cpu().numpy(),  # [B, S, L] -> [B * S, L]
-                num_draws=num_draws,
+                [
+                    Forecast(case_id=case.case_id, prefix_length=length, draws=suffixes)
+                    for (case, length), suffixes in zip(batch, draws, strict=True)
+                ]
             )
-    return len(test)
+    return len(prefixes)

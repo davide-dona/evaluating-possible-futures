@@ -1,15 +1,17 @@
 import json
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple, Self
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from safetensors.torch import load_file, save_file
 from torch import nn
 
 from possible_futures.datasets.collation import PrefixTokens
-from possible_futures.datasets.vocabulary import SpecialToken
+from possible_futures.datasets.vocabulary import SpecialToken, Vocabulary
 from possible_futures.models.decoder import Decoder
 from possible_futures.models.lstm import GateDropoutStack, GateMasks, LSTMState
 
@@ -52,7 +54,7 @@ class Loss(NamedTuple):
     penalty: float
 
 
-class UEDLSTM(nn.Module, Decoder):
+class UEDLSTM(nn.Module):
     """Activity-only U-ED-LSTM: an encoder-decoder LSTM with Gaussian activity logits and
     variational dropout kept active in sampling.
 
@@ -210,8 +212,13 @@ class UEDLSTM(nn.Module, Decoder):
         Each draw encodes its prefix under its own dropout masks, and at every step draws new
         decoder masks, Gaussian logits around the means, and a token from their softmax.
 
+        Args:
+            prefixes: The prefix tokens.
+            num_draws: The number of suffixes drawn for each prefix.
+            max_steps: The most events a suffix holds.
+
         Returns:
-            The tokens `[B, S, L]`, PAD past each draw's end.
+            torch.Tensor: The tokens `[B, S, L]` of every draw, PAD past its end.
         """
         batch_size = prefixes.lengths.size(dim=0)
         rows, device = batch_size * num_draws, prefixes.lengths.device
@@ -256,3 +263,25 @@ class UEDLSTM(nn.Module, Decoder):
         model = cls(**json.loads((directory / _ARGUMENTS_FILE).read_text()))
         model.load_state_dict(load_file(directory / _WEIGHTS_FILE, device=str(device)))
         return model.to(device).eval()
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class UEDLSTMDecoder(Decoder):
+    """Draws suffixes from a U-ED-LSTM, mapping activities to its tokens and back."""
+
+    model: UEDLSTM
+    vocabulary: Vocabulary  # the vocabulary the model was trained on
+    device: torch.device  # the device of the model
+
+    def draw(
+        self, prefixes: Sequence[tuple[str, ...]], *, num_draws: int, max_steps: int
+    ) -> list[list[tuple[str, ...]]]:
+        tokens = PrefixTokens.pad([torch.from_numpy(self.vocabulary.encode(p)) for p in prefixes])
+        drawn = self.model.draw(tokens.to(self.device), num_draws=num_draws, max_steps=max_steps)
+        rows = drawn.flatten(end_dim=1).cpu().numpy()  # [B, S, L] -> [B * S, L]
+        lengths = (rows != SpecialToken.PAD).sum(axis=1)
+        labels = np.array(self.vocabulary.labels, dtype=object)
+        suffixes = [
+            tuple(labels[row[:length]].tolist()) for row, length in zip(rows, lengths, strict=True)
+        ]
+        return [suffixes[start : start + num_draws] for start in range(0, len(suffixes), num_draws)]

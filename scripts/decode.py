@@ -8,14 +8,13 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
 from possible_futures.cases import Case, load_cases
-from possible_futures.datasets.prefix_suffix import PrefixSuffixDataset
 from possible_futures.datasets.vocabulary import Vocabulary
-from possible_futures.inference.decode import write_draws
+from possible_futures.inference.decode import write_decoding
 from possible_futures.models.decoder import Decoder
 from possible_futures.models.markov import MarkovChain
 from possible_futures.models.process import GreedyDecoder, SamplingDecoder
 from possible_futures.models.synthetic import SyntheticProcess
-from possible_futures.models.u_ed_lstm import UEDLSTM
+from possible_futures.models.u_ed_lstm import UEDLSTM, UEDLSTMDecoder
 from possible_futures.models.unconditional import UnconditionalDecoder
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
@@ -82,28 +81,20 @@ def main(config: DecodeConfig) -> None:
         },
     )
     with step('Building the decoder and loading the test prefixes'):
-        vocabulary = Vocabulary.load(vocabulary_file(name))
         train = load_cases(split_file(name, Split.TRAIN))
-        test = PrefixSuffixDataset(load_cases(split_file(name, Split.TEST)), vocabulary=vocabulary)
+        test = load_cases(split_file(name, Split.TEST))
         decoder = build_decoder(
-            decoder_config,
-            data=config.data,
-            train=train,
-            vocabulary=vocabulary,
-            rng=rng,
-            device=device,
+            decoder_config, data=config.data, train=train, rng=rng, device=device
         )
 
     with step(f'Writing the draws to {path}'):
-        num_prefixes = write_draws(
+        num_prefixes = write_decoding(
             decoder,
             test=test,
-            vocabulary=vocabulary,
             path=path,
             num_draws=config.num_draws,
             max_steps=max(len(case) for case in train),
             max_rows=config.max_rows,
-            device=device,
         )
         print(f'  {num_prefixes:,} prefixes', flush=True)
 
@@ -113,18 +104,19 @@ def build_decoder(
     *,
     data: DataConfig,
     train: list[Case],
-    vocabulary: Vocabulary,
     rng: np.random.Generator,
     device: torch.device,
 ) -> Decoder:
     """The decoder `config` asks for, built from the train split where it needs one."""
     match config.model, config.strategy:
         case DecoderModel.U_ED_LSTM, Strategy.SAMPLED:
-            return UEDLSTM.load(model_dir(data.name), device=device)
-        case DecoderModel.UNCONDITIONAL, Strategy.SAMPLED:
-            return UnconditionalDecoder(
-                train=PrefixSuffixDataset(train, vocabulary=vocabulary), rng=rng
+            return UEDLSTMDecoder(
+                model=UEDLSTM.load(model_dir(data.name), device=device),
+                vocabulary=Vocabulary.load(vocabulary_file(data.name)),
+                device=device,
             )
+        case DecoderModel.UNCONDITIONAL, Strategy.SAMPLED:
+            return UnconditionalDecoder.fit(train, rng=rng)
         case DecoderModel.ORACLE | DecoderModel.MARKOV, strategy:
             if config.model is DecoderModel.MARKOV:
                 process = MarkovChain.fit(train)
@@ -133,8 +125,8 @@ def build_decoder(
             else:
                 process = SyntheticProcess(**data.process)
             if strategy is Strategy.SAMPLED:
-                return SamplingDecoder(process=process, vocabulary=vocabulary, rng=rng)
-            return GreedyDecoder(process=process, vocabulary=vocabulary)
+                return SamplingDecoder(process=process, rng=rng)
+            return GreedyDecoder(process=process)
     raise ValueError(f'The {config.model} decoder has no {config.strategy} strategy')
 
 

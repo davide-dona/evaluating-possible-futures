@@ -47,7 +47,6 @@ class PrefixTokens(NamedTuple):
 class PrefixSuffixBatch(NamedTuple):
     """Some prefixes and the suffixes following them."""
 
-    case_ids: tuple[str, ...]  # [B]
     prefixes: PrefixTokens
     suffixes: torch.Tensor  # int64, PAD past each one's end, [B, S]
 
@@ -63,7 +62,6 @@ class PrefixSuffixBatch(NamedTuple):
                 longest suffix.
         """
         return cls(
-            case_ids=tuple(item.case_id for item in items),
             prefixes=PrefixTokens.pad([item.prefix for item in items]),
             suffixes=pad_sequence(
                 [item.suffix for item in items], batch_first=True, padding_value=SpecialToken.PAD

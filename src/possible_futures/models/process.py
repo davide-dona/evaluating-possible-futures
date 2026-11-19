@@ -1,12 +1,9 @@
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import numpy as np
-import torch
 
-from possible_futures.datasets.collation import PrefixTokens
-from possible_futures.datasets.vocabulary import SpecialToken, Vocabulary
 from possible_futures.models.decoder import Decoder
 
 # The pseudo-activity that ends a case.
@@ -55,44 +52,37 @@ class Process(ABC):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class SamplingDecoder(Decoder):
-    """Draws every suffix from a process one activity at a time.
-
-    `vocabulary` must hold every activity the process emits.
-    """
+    """Draws every suffix from a process one activity at a time."""
 
     process: Process
-    vocabulary: Vocabulary
     rng: np.random.Generator
 
-    def draw(self, prefixes: PrefixTokens, *, num_draws: int, max_steps: int) -> torch.Tensor:
-        return _continue_prefixes(
-            prefixes,
-            decode=lambda prefix: self.process.sample_suffix(
-                prefix, rng=self.rng, max_steps=max_steps
-            ),
-            vocabulary=self.vocabulary,
-            num_draws=num_draws,
-        )
+    def draw(
+        self, prefixes: Sequence[tuple[str, ...]], *, num_draws: int, max_steps: int
+    ) -> list[list[tuple[str, ...]]]:
+        return [
+            [
+                self.process.sample_suffix(prefix, rng=self.rng, max_steps=max_steps)
+                for _ in range(num_draws)
+            ]
+            for prefix in prefixes
+        ]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class GreedyDecoder(Decoder):
     """Continues every prefix with the most probable activity of a process at every step, so
-    all draws of a prefix are the same suffix.
-
-    `vocabulary` must hold every activity the process emits.
-    """
+    all draws of a prefix are the same suffix."""
 
     process: Process
-    vocabulary: Vocabulary
 
-    def draw(self, prefixes: PrefixTokens, *, num_draws: int, max_steps: int) -> torch.Tensor:
-        return _continue_prefixes(
-            prefixes,
-            decode=lambda prefix: self.process.greedy_suffix(prefix, max_steps=max_steps),
-            vocabulary=self.vocabulary,
-            num_draws=num_draws,
-        )
+    def draw(
+        self, prefixes: Sequence[tuple[str, ...]], *, num_draws: int, max_steps: int
+    ) -> list[list[tuple[str, ...]]]:
+        return [
+            [self.process.greedy_suffix(prefix, max_steps=max_steps)] * num_draws
+            for prefix in prefixes
+        ]
 
 
 def _choose(options: dict[str, float], *, rng: np.random.Generator) -> str:
@@ -104,31 +94,3 @@ def _choose(options: dict[str, float], *, rng: np.random.Generator) -> str:
             return option
     # Rounding can leave the threshold just above zero after the last option.
     return option
-
-
-def _continue_prefixes(
-    prefixes: PrefixTokens,
-    *,
-    decode: Callable[[tuple[str, ...]], tuple[str, ...]],
-    vocabulary: Vocabulary,
-    num_draws: int,
-) -> torch.Tensor:
-    """Continue every prefix `num_draws` times with `decode`, which maps the activities of a
-    prefix to the activities of a suffix.
-
-    Returns:
-        The tokens `[B, S, L]` on the device of `prefixes`, PAD past each draw's end.
-    """
-    labels = vocabulary.labels
-    tokens = prefixes.tokens.tolist()
-    draws = [
-        vocabulary.encode(decode(tuple(labels[token] for token in row[:length])))
-        for row, length in zip(tokens, prefixes.lengths.tolist(), strict=True)
-        for _ in range(num_draws)
-    ]
-    width = max((len(draw) for draw in draws), default=0)
-    padded = np.full(shape=(len(draws), width), fill_value=SpecialToken.PAD, dtype=np.int64)
-    for row, draw in zip(padded, draws, strict=True):
-        row[: len(draw)] = draw
-    # [B * S, L] -> [B, S, L]
-    return torch.from_numpy(padded).view(len(tokens), num_draws, width).to(prefixes.lengths.device)
