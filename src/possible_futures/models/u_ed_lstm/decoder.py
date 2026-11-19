@@ -7,10 +7,11 @@ from possible_futures.models.u_ed_lstm.logits import GaussianHead, GaussianLogit
 
 
 class Decoder(nn.Module):
-    """Predicts the logit distribution of the next event from the previous one.
+    """Writes a suffix one token at a time: reads the previous token and predicts the Gaussian
+    logits of the next.
 
-    At its first step the bottom layer starts from the encoder's final state and each upper layer
-    from the state the layer below just reached; from then on every layer carries its own state.
+    The first step starts from the encoder's summary of the prefix (`start`); every later step
+    continues from the decoder's own state (`step`).
     """
 
     def __init__(
@@ -18,9 +19,9 @@ class Decoder(nn.Module):
     ) -> None:
         """
         Args:
-            embedding: Embeds every input token.
+            embedding: Turns every input token into a vector.
             lstm: The layers reading the embeddings.
-            head: Maps the top layer's hidden state to the logits of the next event.
+            head: Maps the top layer's hidden state to the logits of the next token.
         """
         super().__init__()
         self.embedding = embedding
@@ -28,24 +29,31 @@ class Decoder(nn.Module):
         self.head = head
 
     def sample_masks(self, rows: int) -> list[DropoutMasks]:
-        """Draw the dropout masks of every layer, bottom first."""
+        """Sample the dropout masks of every layer, bottom first.
+
+        Args:
+            rows: The number of rows, each with its own masks.
+
+        Returns:
+            list[DropoutMasks]: The masks of every layer.
+        """
         return self.lstm.sample_masks(rows)
 
     def start(
         self, tokens: Int64[torch.Tensor, ' B'], encoded: LSTMState, *, masks: list[DropoutMasks]
     ) -> tuple[GaussianLogits, list[LSTMState]]:
-        """Read the first input of every row, starting from the encoder's final state.
+        """Take the first decoding step, from the encoder's summary of the prefix.
 
         Args:
-            tokens: `[B]` the last prefix event of every row.
+            tokens: The last prefix token of every row.
             encoded: The encoder's final state.
             masks: The dropout masks, one per layer.
 
         Returns:
-            The logits `[B, C]` of the next event, and each layer's new state.
+            The logits `[B, V]` of the first suffix token, and each layer's new state.
         """
         outputs, states = self.lstm.forward_from_state(
-            inputs=self._read(tokens), state=encoded, masks=masks
+            inputs=self._embed(tokens), state=encoded, masks=masks
         )
         return self.head(outputs.squeeze(dim=1)), states  # [B, 1, H] -> [B, H]
 
@@ -56,19 +64,26 @@ class Decoder(nn.Module):
         *,
         masks: list[DropoutMasks],
     ) -> tuple[GaussianLogits, list[LSTMState]]:
-        """Read one input per row after the first, every layer from its own state.
+        """Take one decoding step after the first, every layer from its own state.
 
         Args:
-            tokens: `[B]` the previous event of every row.
+            tokens: The previous token of every row.
             states: Each layer's state.
             masks: The dropout masks, one per layer.
 
         Returns:
-            The logits `[B, C]` of the next event, and each layer's new state.
+            The logits `[B, V]` of the next token, and each layer's new state.
         """
-        outputs, states = self.lstm(inputs=self._read(tokens), states=states, masks=masks)
+        outputs, states = self.lstm(inputs=self._embed(tokens), states=states, masks=masks)
         return self.head(outputs.squeeze(dim=1)), states  # [B, 1, H] -> [B, H]
 
-    def _read(self, tokens: Int64[torch.Tensor, ' B']) -> Float[torch.Tensor, 'B 1 D']:
-        """The embedding of every token, as a sequence of one input."""
+    def _embed(self, tokens: Int64[torch.Tensor, ' B']) -> Float[torch.Tensor, 'B 1 D']:
+        """Embed one token per row, as a sequence of one input.
+
+        Args:
+            tokens: The token of every row.
+
+        Returns:
+            torch.Tensor: The embedding of every token.
+        """
         return self.embedding(tokens).unsqueeze(dim=1)  # [B] -> [B, 1, D]

@@ -9,7 +9,12 @@ from possible_futures.processes.process import Process
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class SamplingForecaster(Forecaster):
-    """Draws every suffix from a process one activity at a time."""
+    """Draws every suffix by sampling a process one activity at a time.
+
+    Attributes:
+        process: The process sampled.
+        rng: Samples the activities.
+    """
 
     process: Process
     rng: np.random.Generator
@@ -28,8 +33,12 @@ class SamplingForecaster(Forecaster):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class GreedyForecaster(Forecaster):
-    """Continues every prefix with the most probable activity of a process at every step, so
-    all draws of a prefix are the same suffix."""
+    """Continues every prefix with the most likely activity of a process at every step, so
+    all draws of a prefix are the same suffix.
+
+    Attributes:
+        process: The process followed.
+    """
 
     process: Process
 

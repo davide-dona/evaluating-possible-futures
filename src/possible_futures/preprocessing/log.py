@@ -77,7 +77,7 @@ def write_log(
 def drop_outliers(
     cases: Sequence[Case], *, max_length: int, max_duration_days: float
 ) -> list[Case]:
-    """Drop outliers cases, based on length and duration constraints.
+    """Drop the outlier cases: the ones too long, in events or in time.
 
     Args:
         cases: The list of cases to filter.

@@ -3,12 +3,14 @@ from collections.abc import Callable
 
 import numpy as np
 
-# The pseudo-activity that ends a case.
+# The pseudo-activity a process gives as the next one when the case is over, the activity-level
+# counterpart of the EOS token.
 END = '<END>'
 
 
 class Process(ABC):
-    """A process giving the distribution of the next activity after a prefix."""
+    """A model of how cases unfold: the probability of every possible next activity after a
+    prefix. Suffixes follow from applying it repeatedly."""
 
     @abstractmethod
     def next_activity_probabilities(self, prefix: tuple[str, ...]) -> dict[str, float]:
@@ -24,22 +26,26 @@ class Process(ABC):
     def sample_suffix(
         self, prefix: tuple[str, ...], *, rng: np.random.Generator, max_steps: int
     ) -> tuple[str, ...]:
-        """Draw the activities following `prefix` one at a time until `END`.
+        """Sample the activities following `prefix` one at a time until `END`.
 
         Args:
             prefix: The activities the suffix follows.
-            rng: Draws every activity.
+            rng: Samples every activity.
             max_steps: The most activities the suffix holds.
 
         Returns:
             tuple[str, ...]: The activities of the suffix.
         """
         return self._suffix(
-            prefix, pick=lambda options: _choose(options, rng=rng), max_steps=max_steps
+            prefix,
+            choose=lambda options: _sample_activity(options, rng=rng),
+            max_steps=max_steps,
         )
 
     def greedy_suffix(self, prefix: tuple[str, ...], *, max_steps: int) -> tuple[str, ...]:
-        """Take the most probable activity following the prefix at every step, until `END`.
+        """Take the most likely next activity at every step, until `END`. This is the greedy
+        suffix: the most likely activity at each step, not necessarily the most likely suffix
+        as a whole.
 
         Args:
             prefix: The activities the suffix follows.
@@ -49,21 +55,21 @@ class Process(ABC):
             tuple[str, ...]: The activities of the suffix.
         """
         return self._suffix(
-            prefix, pick=lambda options: max(options, key=options.get), max_steps=max_steps
+            prefix, choose=lambda options: max(options, key=options.get), max_steps=max_steps
         )
 
     def _suffix(
         self,
         prefix: tuple[str, ...],
         *,
-        pick: Callable[[dict[str, float]], str],
+        choose: Callable[[dict[str, float]], str],
         max_steps: int,
     ) -> tuple[str, ...]:
-        """Extend the prefix with the activity `pick` chooses at every step, until `END`.
+        """Extend the prefix with the activity `choose` picks at every step, until `END`.
 
         Args:
             prefix: The activities the suffix follows.
-            pick: Chooses the next activity from the probability of every activity.
+            choose: Picks the next activity from the probability of every activity.
             max_steps: The most activities the suffix holds.
 
         Returns:
@@ -71,22 +77,22 @@ class Process(ABC):
         """
         suffix = []
         while len(suffix) < max_steps:
-            activity = pick(self.next_activity_probabilities((*prefix, *suffix)))
+            activity = choose(self.next_activity_probabilities((*prefix, *suffix)))
             if activity == END:
                 break
             suffix.append(activity)
         return tuple(suffix)
 
 
-def _choose(options: dict[str, float], *, rng: np.random.Generator) -> str:
-    """Draw one of the options with its probability.
+def _sample_activity(options: dict[str, float], *, rng: np.random.Generator) -> str:
+    """Sample one activity, each with its probability.
 
     Args:
-        options: The probability of every option, keyed by it.
-        rng: Draws the option.
+        options: The probability of every activity, keyed by it.
+        rng: Samples the activity.
 
     Returns:
-        str: The option drawn.
+        str: The activity sampled.
     """
     threshold = rng.random()
     for option, probability in options.items():

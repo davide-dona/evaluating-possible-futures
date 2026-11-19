@@ -11,20 +11,25 @@ from possible_futures.datasets.tokenizer import SpecialToken
 
 
 class PrefixTokens(NamedTuple):
-    """The tokens of some prefixes, padded to the longest of them, PAD past each one's length."""
+    """A batch of prefixes as tokens, each padded with PAD to the length of the longest.
+
+    Attributes:
+        tokens: The tokens of every prefix, PAD past its length.
+        lengths: The number of real tokens in every prefix.
+    """
 
     tokens: Int64[torch.Tensor, 'B P']
     lengths: Int64[torch.Tensor, ' B']
 
     @classmethod
-    def pad(cls, prefixes: Sequence[Int64[torch.Tensor, ' _']]) -> Self:
-        """Pad prefixes to the longest of them.
+    def pad(cls, prefixes: Sequence[Int64[torch.Tensor, ' P']]) -> Self:
+        """Pad prefixes to the length of the longest of them.
 
         Args:
             prefixes: The tokens of every prefix.
 
         Returns:
-            PrefixTokens: `[B, P]` with `P` the length of the longest prefix.
+            PrefixTokens: The padded prefixes and their lengths.
         """
         return cls(
             tokens=pad_sequence(prefixes, batch_first=True, padding_value=SpecialToken.PAD),
@@ -32,24 +37,48 @@ class PrefixTokens(NamedTuple):
         )
 
     def to(self, device: torch.device) -> 'PrefixTokens':
-        """Move the prefix tokens to a device."""
+        """Move the prefixes to a device.
+
+        Args:
+            device: The device moved to.
+
+        Returns:
+            PrefixTokens: The same prefixes, on `device`.
+        """
         return PrefixTokens(*(field.to(device) for field in self))
 
     def repeat_interleave(self, num_copies: int) -> 'PrefixTokens':
-        """Repeat every prefix `num_copies` times in a row, `[B, P] -> [B * num_copies, P]`."""
+        """Copy every prefix `num_copies` times, the copies of a prefix next to each other, so
+        that each copy can be continued independently.
+
+        Args:
+            num_copies: The number of copies of every prefix.
+
+        Returns:
+            PrefixTokens: `[B * num_copies, P]`, prefix after prefix.
+        """
         return PrefixTokens(*(field.repeat_interleave(num_copies, dim=0) for field in self))
 
-    def last_events(self) -> Int64[torch.Tensor, ' B']:
-        """The last real event of every prefix, `[B, P] -> [B]`."""
+    def last_tokens(self) -> Int64[torch.Tensor, ' B']:
+        """The last real token of every prefix, the one its suffix continues from.
+
+        Returns:
+            torch.Tensor: The token at position `length - 1` of every prefix.
+        """
         index = (self.lengths - 1).unsqueeze(dim=1)  # [B] -> [B, 1]
         return self.tokens.gather(dim=1, index=index).squeeze(dim=1)
 
 
 class PrefixSuffixBatch(NamedTuple):
-    """Some prefixes and the suffixes following them."""
+    """A training batch: prefixes as tokens and the observed suffix following each.
+
+    Attributes:
+        prefixes: The prefixes, padded.
+        suffixes: The tokens of every suffix, PAD past its end.
+    """
 
     prefixes: PrefixTokens
-    suffixes: Int64[torch.Tensor, 'B L']  # PAD past each one's end
+    suffixes: Int64[torch.Tensor, 'B L']
 
     @classmethod
     def collate(cls, items: Sequence[PrefixSuffix]) -> Self:
@@ -69,15 +98,17 @@ class PrefixSuffixBatch(NamedTuple):
             ),
         )
 
-    def targets(self, width: int) -> Int64[torch.Tensor, 'B width']:
-        """The `width` events following each prefix, EOS past the end of its case.
+    def targets(self, length: int) -> Int64[torch.Tensor, 'B T']:
+        """The first `length` tokens of every suffix, the tokens the model learns to predict.
+        A suffix shorter than `length` continues with EOS, so the model also learns when the
+        case ends.
 
         Args:
-            width: The number of events kept from each suffix.
+            length: The number of tokens kept from each suffix, `T`.
 
         Returns:
             torch.Tensor: The targets of every prefix.
         """
-        suffixes = self.suffixes[:, :width]  # [B, L] -> [B, min(L, width)]
+        suffixes = self.suffixes[:, :length]  # [B, L] -> [B, min(L, T)]
         targets = suffixes.masked_fill(suffixes == SpecialToken.PAD, SpecialToken.EOS)
-        return F.pad(targets, pad=(0, width - targets.shape[1]), value=SpecialToken.EOS)
+        return F.pad(targets, pad=(0, length - targets.shape[1]), value=SpecialToken.EOS)

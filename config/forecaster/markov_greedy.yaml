@@ -1,5 +1,5 @@
 # @package _global_
-# A first-order Markov chain fitted on train, its most probable activity at every step.
+# A first-order Markov chain fitted on train, its most likely activity at every step.
 forecaster:
   name: markov_greedy
   model: MARKOV

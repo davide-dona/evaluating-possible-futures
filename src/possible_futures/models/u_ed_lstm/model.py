@@ -19,20 +19,26 @@ _WEIGHTS_FILE = 'model.safetensors'
 _ARGUMENTS_FILE = 'arguments.json'
 
 
-def _embedding_dim(num_classes: int) -> int:
-    """The width of the embeddings of `num_classes` classes.
+def _embedding_dim(vocabulary_size: int) -> int:
+    """The embedding width for a vocabulary: grows sublinearly with it, up to 600.
 
     Args:
-        num_classes: The number of output classes.
+        vocabulary_size: The number of tokens, special tokens included, `V`.
 
     Returns:
-        int: The width of every embedding.
+        int: The width of every embedding, `D`.
     """
-    return min(600, round(1.6 * num_classes**0.56))
+    return min(600, round(1.6 * vocabulary_size**0.56))
 
 
 class Loss(NamedTuple):
-    """The training objective: the `total` to backpropagate and the terms it sums."""
+    """The training objective of one batch and the two terms it sums.
+
+    Attributes:
+        total: The value to backpropagate, `data + penalty`.
+        data: How poorly the model predicts the targets, the mean cross-entropy.
+        penalty: The weight penalty, which keeps the parameters small.
+    """
 
     total: Float[torch.Tensor, '']
     data: float
@@ -40,9 +46,12 @@ class Loss(NamedTuple):
 
 
 class UEDLSTM(nn.Module):
-    """Activity-only U-ED-LSTM: an encoder-decoder LSTM with Gaussian activity logits and
-    variational dropout kept active in sampling. The decoder's first input is the last prefix
-    event.
+    """U-ED-LSTM, the uncertainty-aware encoder-decoder LSTM, predicting activities only.
+
+    The encoder summarizes a prefix; the decoder then writes the suffix one token at a time,
+    starting from the last prefix token. The model expresses its uncertainty in two ways that
+    stay active when sampling: dropout, which samples a slightly different network for every
+    suffix, and Gaussian logits, which sample a different next-token distribution at every step.
     """
 
     def __init__(
@@ -56,12 +65,11 @@ class UEDLSTM(nn.Module):
     ) -> None:
         """
         Args:
-            vocabulary_size: Number of tokens, special tokens included. The output classes are the
-                tokens from UNK on.
+            vocabulary_size: Number of tokens, special tokens included, `V`.
             num_layers: Layers of the encoder and of the decoder.
-            hidden_size: Width of every LSTM state.
+            hidden_size: Width of every LSTM state, `H`.
             dropout: Probability of dropping a gate input or hidden feature.
-            logit_samples: Gaussian logit draws the loss averages over.
+            logit_samples: Logit vectors sampled at every position to average the loss, `K`.
         """
         super().__init__()
         self.arguments = {
@@ -72,8 +80,7 @@ class UEDLSTM(nn.Module):
             'logit_samples': logit_samples,
         }
         self.logit_samples = logit_samples
-        num_classes = vocabulary_size - SpecialToken.UNK
-        width = _embedding_dim(num_classes)
+        width = _embedding_dim(vocabulary_size)
 
         def embedding() -> nn.Embedding:
             return nn.Embedding(
@@ -88,29 +95,30 @@ class UEDLSTM(nn.Module):
         # The order the parts are built in sets the random init of every parameter.
         encoder_embedding, decoder_embedding = embedding(), embedding()
         encoder_lstm, decoder_lstm = lstm(), lstm()
-        head = GaussianHead(hidden_size=hidden_size, num_classes=num_classes)
+        head = GaussianHead(hidden_size=hidden_size, vocabulary_size=vocabulary_size)
         self.encoder = Encoder(embedding=encoder_embedding, lstm=encoder_lstm)
         self.decoder = Decoder(embedding=decoder_embedding, lstm=decoder_lstm, head=head)
 
     def forward(
         self, prefixes: PrefixTokens, targets: Int64[torch.Tensor, 'B T'], *, forced: Sequence[bool]
     ) -> GaussianLogits:
-        """Predict the logit distribution of each target position, dropout active.
+        """Predict the Gaussian logits of every target token, dropout active.
 
         Args:
             prefixes: The prefix tokens.
-            targets: The `[B, T]` events following each prefix.
-            forced: `T - 1` flags; entry `t` is whether step `t + 1` reads target `t` instead
-                of the most likely class of step `t`.
+            targets: The tokens following each prefix.
+            forced: Whether each step after the first is teacher forced, `T - 1` flags. Entry
+                `t` decides what step `t + 1` reads: the true token `targets[:, t]` if True,
+                the model's own most likely token at step `t` if False.
 
         Returns:
-            The logits `[B, T, C]` of every target position.
+            GaussianLogits: The logits `[B, T, V]` of every target position.
         """
         rows = targets.size(dim=0)
         encoded = self.encoder(prefixes, masks=self.encoder.sample_masks(rows))
         masks = self.decoder.sample_masks(rows)
         logits, states = self.decoder.start(
-            tokens=prefixes.last_events(), encoded=encoded, masks=masks
+            tokens=prefixes.last_tokens(), encoded=encoded, masks=masks
         )
         steps = [logits]
         for position, force in enumerate(forced):
@@ -122,46 +130,47 @@ class UEDLSTM(nn.Module):
     def loss(
         self, logits: GaussianLogits, targets: Int64[torch.Tensor, 'B T'], *, weight_penalty: float
     ) -> Loss:
-        """The full objective: the cross-entropy of the targets under the logits, averaged over
-        `logit_samples` Gaussian logit draws, the positions, and the batch, plus `weight_penalty`
-        times the sum of the squared parameters.
+        """The training objective: the cross-entropy of the targets, averaged over
+        `logit_samples` sampled logit vectors, the positions, and the batch, plus
+        `weight_penalty` times the sum of the squared parameters.
 
         Args:
-            logits: The logits `[B, T, C]` of every target position.
-            targets: The events following each prefix.
+            logits: The logits `[B, T, V]` of every target position.
+            targets: The tokens following each prefix.
             weight_penalty: The weight of the sum of the squared parameters.
 
         Returns:
             Loss: The total to backpropagate and the terms it sums.
         """
-        data = logits.cross_entropy(targets, samples=self.logit_samples)
+        data = logits.cross_entropy(targets, num_samples=self.logit_samples)
         penalty = weight_penalty * sum(parameter.square().sum() for parameter in self.parameters())
         return Loss(total=data + penalty, data=data.item(), penalty=penalty.item())
 
     @torch.no_grad()
-    def draw(
+    def sample_suffixes(
         self, prefixes: PrefixTokens, *, num_draws: int, max_steps: int
     ) -> Int64[torch.Tensor, 'B S L']:
-        """Draw `num_draws` suffixes per prefix.
+        """Sample `num_draws` suffixes per prefix, each one token at a time until EOS.
 
-        Each draw encodes its prefix under its own dropout masks, and at every step draws new
-        decoder masks, Gaussian logits around the means, and a token from their softmax.
+        Every suffix encodes its prefix under its own dropout masks. At every step it samples
+        new decoder masks, a logit vector from the Gaussian logits, and a token from that
+        vector's softmax.
 
         Args:
-            prefixes: The prefix tokens.
-            num_draws: The number of suffixes drawn for each prefix.
-            max_steps: The most events a suffix holds.
+            prefixes: The prefix tokens, `B` prefixes.
+            num_draws: The number of suffixes sampled for each prefix, `S`.
+            max_steps: The most tokens a suffix holds, EOS excluded.
 
         Returns:
-            torch.Tensor: The tokens `[B, S, L]` of every draw, PAD past its end.
+            torch.Tensor: The tokens of every suffix, PAD past its end.
         """
         batch_size = prefixes.lengths.size(dim=0)
         rows, device = batch_size * num_draws, prefixes.lengths.device
         prefixes = prefixes.repeat_interleave(num_draws)
         encoded = self.encoder(prefixes, masks=self.encoder.sample_masks(rows))
-        inputs = prefixes.last_events()
+        inputs = prefixes.last_tokens()
         tokens = torch.full(size=(rows, max_steps), fill_value=SpecialToken.PAD, device=device)
-        # The output row of every row still decoding.
+        # The row of `tokens` of every suffix still decoding.
         live = torch.arange(end=rows, device=device)
         states: list[LSTMState] = []
         for position in range(max_steps):

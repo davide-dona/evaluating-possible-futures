@@ -14,7 +14,7 @@ import pyarrow.parquet as pq
 FORECASTS_SCHEMA = pa.schema(
     [
         ('case_id', pa.string()),
-        ('prefix_length', pa.int32()),
+        ('prefix_length', pa.int64()),
         ('draw', pa.int32()),
         ('activities', pa.list_(pa.dictionary(pa.int16(), pa.string()))),
     ]
@@ -23,11 +23,17 @@ FORECASTS_SCHEMA = pa.schema(
 
 @dataclass(frozen=True, slots=True)
 class Forecast:
-    """The suffixes drawn for one prefix of a case."""
+    """The suffixes a forecaster drew for one prefix of a test case.
+
+    Attributes:
+        case_id: The case the prefix is taken from.
+        prefix_length: The number of activities in the prefix.
+        draws: The activities of every suffix drawn for the prefix.
+    """
 
     case_id: str
     prefix_length: int
-    draws: list[tuple[str, ...]]  # the activities of every drawn suffix
+    draws: list[tuple[str, ...]]
 
 
 def save_forecasts(forecasts: Sequence[Forecast], path: Path) -> None:
@@ -70,7 +76,8 @@ def load_forecasts(path: Path) -> list[Forecast]:
 
 
 class ForecastWriter:
-    """Writes forecasts to a Parquet file a few at a time, so no forecast outlives its write."""
+    """Appends forecasts to a Parquet file one batch at a time, so memory never holds more than
+    one batch of draws. Use it as a context manager, which opens and closes the file."""
 
     def __init__(self, path: Path) -> None:
         """

@@ -10,13 +10,18 @@ from possible_futures.forecasters.forecaster import Forecaster
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class UnconditionalForecaster(Forecaster):
-    """Ignores the prefix: every draw is the suffix of a train prefix, drawn uniformly.
+    """A baseline that ignores the prefix: every draw is the suffix of a random train prefix,
+    each train prefix equally likely.
 
     The train suffixes are never longer than the longest train case, so draws are not truncated
     at `max_steps`.
+
+    Attributes:
+        suffixes: The suffix of every train prefix.
+        rng: Picks the suffixes.
     """
 
-    suffixes: tuple[tuple[str, ...], ...]  # the suffix of every train prefix
+    suffixes: tuple[tuple[str, ...], ...]
     rng: np.random.Generator
 
     @classmethod
@@ -25,7 +30,7 @@ class UnconditionalForecaster(Forecaster):
 
         Args:
             cases: The train cases.
-            rng: Draws the suffixes.
+            rng: Picks the suffixes.
 
         Returns:
             UnconditionalForecaster: The forecaster drawing among the suffixes, case after case and

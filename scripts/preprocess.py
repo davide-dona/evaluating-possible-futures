@@ -29,6 +29,12 @@ from possible_futures.runs.paths import (
 
 @dataclass
 class PreprocessConfig:
+    """The settings of the preprocess stage.
+
+    Attributes:
+        data: The dataset.
+    """
+
     data: DataConfig = MISSING
 
 
@@ -102,7 +108,14 @@ def main(config: PreprocessConfig) -> None:
 
 
 def _describe(cases: list[Case]) -> dict[str, str]:
-    """The size of a split, its prefixes, and the shape of its cases, formatted for printing."""
+    """Describe the size of a split, its prefixes, and the shape of its cases, for printing.
+
+    Args:
+        cases: The cases of the split.
+
+    Returns:
+        dict[str, str]: Every statistic, formatted, keyed by its name.
+    """
     lengths = np.array([len(case) for case in cases])
     return {
         'cases': f'{len(cases):,}',
@@ -115,7 +128,12 @@ def _describe(cases: list[Case]) -> dict[str, str]:
 
 
 def _report_dropped(*, read: int, kept: int) -> None:
-    """Report how many of the cases read were dropped."""
+    """Print how many of the cases read were dropped.
+
+    Args:
+        read: The number of cases before the drop.
+        kept: The number of cases after it.
+    """
     dropped = read - kept
     print(f'  dropped {dropped:,} of {read:,} cases ({dropped / read:.2%})', flush=True)
 

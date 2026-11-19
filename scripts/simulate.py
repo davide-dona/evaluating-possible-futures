@@ -15,6 +15,12 @@ from possible_futures.runs.paths import original_log_file
 
 @dataclass
 class SimulateConfig:
+    """The settings of the simulate stage.
+
+    Attributes:
+        data: The simulated dataset.
+    """
+
     data: DataConfig = MISSING
 
 

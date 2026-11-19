@@ -7,12 +7,13 @@ from possible_futures.forecasts import Forecast, ForecastWriter
 
 
 class Forecaster(Protocol):
-    """Continues prefixes with suffixes."""
+    """Imagines possible futures of prefixes: draws suffixes that could follow each one."""
 
     def draw(
         self, prefixes: Sequence[tuple[str, ...]], *, num_draws: int, max_steps: int
     ) -> list[list[tuple[str, ...]]]:
-        """Draw `num_draws` suffixes per prefix, each at most `max_steps` activities.
+        """Draw `num_draws` suffixes per prefix, each at most `max_steps` activities. A draw is
+        one possible future; a deterministic forecaster returns the same suffix every time.
 
         Args:
             prefixes: The activities of every prefix.
@@ -35,7 +36,7 @@ def write_forecasts(
     max_steps: int,
     max_rows: int,
 ) -> int:
-    """Draw suffixes for every prefix of the test cases and save them to `path`.
+    """Draw suffixes for every scored prefix of the test cases and save them to `path`.
 
     Args:
         forecaster: The forecaster the suffixes are drawn from.

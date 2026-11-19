@@ -6,7 +6,7 @@ defaults:
 # The name of the forecasts collapsed, the stem of their file.
 forecasts: sampled
 # The name of the collapsed forecasts, the stem of their file.
-name: medoid
+output: medoid
 # The distance the medoid of the draws of a prefix is taken under.
 distance:
   _target_: possible_futures.distances.NormalizedDamerauLevenshtein

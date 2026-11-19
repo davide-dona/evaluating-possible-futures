@@ -15,18 +15,42 @@ from possible_futures.tables import MetricColumn, properties_table, scores_table
 
 @dataclass
 class ScoresTableConfig:
+    """One table of mean scores.
+
+    Attributes:
+        datasets: The datasets of the table, one group of rows each.
+        forecasts: The forecasts of every dataset, one row each.
+    """
+
     datasets: list[str] = MISSING
     forecasts: list[str] = MISSING
 
 
 @dataclass
 class MetricColumnConfig:
+    """How a table prints the mean scores of one metric.
+
+    Attributes:
+        header: The column header, in LaTeX.
+        higher_is_better: Whether the best score of a column is its highest.
+    """
+
     header: str = MISSING
     higher_is_better: bool = MISSING
 
 
 @dataclass
 class TablesConfig:
+    """The settings of the tables stage.
+
+    Attributes:
+        datasets: The name every table prints for every dataset.
+        scores: Every table of mean scores, keyed by its file stem.
+        properties: The datasets of the table of log properties.
+        forecasts: The LaTeX macro every table prints for every set of forecasts.
+        metrics: The column of every metric, keyed by its name in the scores files.
+    """
+
     datasets: dict[str, str] = MISSING
     scores: dict[str, ScoresTableConfig] = MISSING
     properties: list[str] = MISSING
@@ -57,14 +81,14 @@ def main(config: TablesConfig) -> None:
             means = {
                 config.datasets[dataset]: pd.DataFrame.from_dict(
                     {
-                        forecasts: load_scores(scores_file(dataset, forecasts))
-                        for forecasts in table.forecasts
+                        forecasts_name: load_scores(scores_file(dataset, forecasts_name))
+                        for forecasts_name in table.forecasts
                     },
                     orient='index',
                 )
                 for dataset in table.datasets
             }
-            macros = {forecasts: config.forecasts[forecasts] for forecasts in table.forecasts}
+            macros = {name: config.forecasts[name] for name in table.forecasts}
             path.write_text(scores_table(means, forecasts=macros, metrics=metrics))
     path = output / 'properties.tex'
     with step(f'Writing {path}'):

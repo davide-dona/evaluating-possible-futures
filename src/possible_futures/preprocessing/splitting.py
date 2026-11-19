@@ -9,10 +9,16 @@ from possible_futures.cases import Case
 
 @dataclass(frozen=True, slots=True)
 class OutOfTimeSplit:
-    """The train and test cases of a log, split out of time."""
+    """The train and test cases of a log, split in time: the model trains on the past and is
+    scored on the future.
+
+    Attributes:
+        train: The cases that end before the separation, with all their prefixes.
+        test: The cases that end at or after it, each holding only its scored prefixes.
+    """
 
     train: list[Case]
-    test: list[Case]  # each holding only its scored prefixes
+    test: list[Case]
 
     @classmethod
     def of(cls, cases: Sequence[Case], *, test_fraction: float, end_window_days: float) -> Self:
@@ -78,8 +84,8 @@ def _scored_lengths(
     Returns:
         range: The lengths, empty when no prefix is scored.
     """
-    # A prefix of length k ends at the k-th event, so its length is the 1-based position of the
-    # event it has to reach.
+    # A case that starts before the separation is scored only from the first prefix that ends
+    # after it. A prefix of length k ends at the k-th event.
     shortest = 1
     if crosses_separation:
         shortest = next(

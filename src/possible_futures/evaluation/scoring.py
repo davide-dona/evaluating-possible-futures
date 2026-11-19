@@ -26,7 +26,8 @@ def mean_scores(
     Args:
         forecasts: The forecasts scored.
         test: The test cases, whose suffixes the forecasts are scored against.
-        tokenizer: Maps the activities of the draws and of the test cases to tokens.
+        tokenizer: The tokenizer of the train split. Every observed activity it does not know
+            reads as `<UNK>`, the one unknown activity a model can draw.
         metrics: The metrics. Each must pickle, to reach the worker processes.
         workers: Processes scoring the forecasts in parallel.
 
@@ -36,39 +37,36 @@ def mean_scores(
     """
     cases = {case.case_id: case for case in test}
     draws = [forecast.draws for forecast in forecasts]
-    observed = [cases[forecast.case_id].suffix(forecast.prefix_length) for forecast in forecasts]
+    observed = [
+        tokenizer.known(cases[forecast.case_id].suffix(forecast.prefix_length))
+        for forecast in forecasts
+    ]
     chunksize = max(1, len(forecasts) // (16 * workers))
-    score = partial(_scores, tokenizer=tokenizer, metrics=metrics)
+    score = partial(_scores, metrics=metrics)
     # One torch thread per process, so the processes do not oversubscribe the cores.
     with ProcessPoolExecutor(
         max_workers=workers, initializer=torch.set_num_threads, initargs=(1,)
     ) as pool:
-        scores = np.array(list(pool.map(score, draws, observed, chunksize=chunksize)))  # [N, M]
+        # One row per forecast, one column per metric
+        scores = np.array(list(pool.map(score, draws, observed, chunksize=chunksize)))
     means = scores.mean(axis=0).tolist()
     return {metric.name: mean for metric, mean in zip(metrics, means, strict=True)}
 
 
 def _scores(
-    draws: Sequence[tuple[str, ...]],
-    observed: tuple[str, ...],
-    *,
-    tokenizer: Tokenizer,
-    metrics: Sequence[Metric],
+    draws: Sequence[tuple[str, ...]], observed: tuple[str, ...], *, metrics: Sequence[Metric]
 ) -> list[float]:
     """Score the draws of one prefix against its observed suffix under every metric.
 
     Args:
         draws: The activities of every draw.
         observed: The activities of the observed suffix.
-        tokenizer: Maps the activities to tokens.
         metrics: The metrics.
 
     Returns:
         list[float]: The score under every metric, in the order of `metrics`.
     """
-    draw_tokens = [tuple(tokenizer.encode(draw).tolist()) for draw in draws]
-    observed_tokens = tuple(tokenizer.encode(observed).tolist())
-    return [metric(draws=draw_tokens, observed=observed_tokens) for metric in metrics]
+    return [metric(draws=draws, observed=observed) for metric in metrics]
 
 
 def save_scores(means: Mapping[str, float], path: Path) -> None:

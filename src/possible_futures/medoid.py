@@ -2,17 +2,16 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import replace
 
-from possible_futures.datasets.tokenizer import Tokenizer
 from possible_futures.distances import Distance
 from possible_futures.forecasts import Forecast
 
 
-def medoid_index(draws: Sequence[tuple[int, ...]], *, distance: Distance) -> int:
-    """The index of the draw with the lowest mean distance to all draws, ties going to the
-    lowest in tuple order.
+def medoid_index(draws: Sequence[tuple[str, ...]], *, distance: Distance) -> int:
+    """The index of the most central draw: the one with the lowest mean distance to all draws,
+    ties going to the lowest in tuple order.
 
     Args:
-        draws: The tokens of every draw.
+        draws: The activities of every draw.
         distance: The distance the mean is taken under.
 
     Returns:
@@ -25,22 +24,17 @@ def medoid_index(draws: Sequence[tuple[int, ...]], *, distance: Distance) -> int
     return draws.index(unique[totals.argmin()])
 
 
-def medoids(
-    forecasts: Sequence[Forecast], *, tokenizer: Tokenizer, distance: Distance
-) -> list[Forecast]:
-    """Keep only the medoid of the draws of every forecast.
+def medoids(forecasts: Sequence[Forecast], *, distance: Distance) -> list[Forecast]:
+    """Collapse every forecast to a single draw, its medoid.
 
     Args:
         forecasts: The forecasts collapsed.
-        tokenizer: Maps the activities of the draws to tokens.
         distance: The distance the medoid is taken under.
 
     Returns:
         list[Forecast]: One forecast per forecast of `forecasts`, holding only its medoid.
     """
-    collapsed = []
-    for forecast in forecasts:
-        tokens = [tuple(tokenizer.encode(draw).tolist()) for draw in forecast.draws]
-        medoid = forecast.draws[medoid_index(tokens, distance=distance)]
-        collapsed.append(replace(forecast, draws=[medoid]))
-    return collapsed
+    return [
+        replace(forecast, draws=[forecast.draws[medoid_index(forecast.draws, distance=distance)]])
+        for forecast in forecasts
+    ]

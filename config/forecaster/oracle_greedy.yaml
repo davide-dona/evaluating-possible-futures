@@ -1,5 +1,5 @@
 # @package _global_
-# The true process of the simulated dataset, its most probable activity at every step.
+# The true process of the simulated dataset, its most likely activity at every step.
 forecaster:
   name: oracle_greedy
   model: ORACLE

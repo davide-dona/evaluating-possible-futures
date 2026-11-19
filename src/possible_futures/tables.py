@@ -12,9 +12,14 @@ DECIMALS = 3
 
 @dataclass(frozen=True, slots=True)
 class MetricColumn:
-    """How a table prints the mean scores of one metric."""
+    """How a table prints the mean scores of one metric.
 
-    header: str  # LaTeX
+    Attributes:
+        header: The column header, in LaTeX.
+        higher_is_better: Whether the best score of a column is its highest, printed in bold.
+    """
+
+    header: str
     higher_is_better: bool
 
 

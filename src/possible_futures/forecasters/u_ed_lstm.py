@@ -6,7 +6,7 @@ from typing import Self
 import torch
 
 from possible_futures.datasets.collation import PrefixTokens
-from possible_futures.datasets.tokenizer import SpecialToken, Tokenizer
+from possible_futures.datasets.tokenizer import Tokenizer
 from possible_futures.forecasters.forecaster import Forecaster
 from possible_futures.models.u_ed_lstm.model import UEDLSTM
 
@@ -15,10 +15,15 @@ _TOKENIZER_FILE = 'tokenizer.json'
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class UEDLSTMForecaster(Forecaster):
-    """Draws suffixes from a U-ED-LSTM, mapping activities to its tokens and back."""
+    """Samples suffixes from a trained U-ED-LSTM, translating activities to its tokens and back.
+
+    Attributes:
+        model: The trained model.
+        tokenizer: The tokenizer the model was trained with.
+    """
 
     model: UEDLSTM
-    tokenizer: Tokenizer  # the tokenizer the model was trained on
+    tokenizer: Tokenizer
 
     def save(self, directory: Path) -> None:
         """Write the model and the tokenizer it was trained with.
@@ -49,11 +54,9 @@ class UEDLSTMForecaster(Forecaster):
         self, prefixes: Sequence[tuple[str, ...]], *, num_draws: int, max_steps: int
     ) -> list[list[tuple[str, ...]]]:
         device = next(self.model.parameters()).device
-        tokens = PrefixTokens.pad([torch.from_numpy(self.tokenizer.encode(p)) for p in prefixes])
-        drawn = self.model.draw(tokens.to(device), num_draws=num_draws, max_steps=max_steps)
-        rows = drawn.flatten(end_dim=1).cpu().numpy()  # [B, S, L] -> [B * S, L]
-        lengths = (rows != SpecialToken.PAD).sum(axis=1)
-        suffixes = [
-            self.tokenizer.decode(row[:length]) for row, length in zip(rows, lengths, strict=True)
-        ]
+        tokens = PrefixTokens.pad([self.tokenizer.encode(prefix) for prefix in prefixes])
+        sampled = self.model.sample_suffixes(
+            tokens.to(device), num_draws=num_draws, max_steps=max_steps
+        )
+        suffixes = self.tokenizer.decode(sampled.flatten(end_dim=1))  # [B, S, L] -> [B * S, L]
         return [suffixes[start : start + num_draws] for start in range(0, len(suffixes), num_draws)]

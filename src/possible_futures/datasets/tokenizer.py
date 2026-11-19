@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Self
 
 import numpy as np
+import torch
 from jaxtyping import Int64
 
 from possible_futures.cases import Case
@@ -14,31 +15,51 @@ from possible_futures.cases import Case
 class SpecialToken(IntEnum):
     """The tokens the tokenizer reserves ahead of the activities."""
 
-    # Padding token, fills sequences to the same length for batching.
+    # Fills the shorter sequences of a batch up to the length of the longest.
     PAD = 0
-    # Unknown token, activity not in the train split.
+    # Stands for any activity the train split does not hold.
     UNK = 1
-    # End-of-sequence token, marks the end of a sequence for the decoder.
+    # Ends a suffix: the decoder emits it when it predicts the case is over.
     EOS = 2
 
     @property
     def label(self) -> str:
+        """The label the tokenizer gives this token, such as `<PAD>`.
+
+        Returns:
+            str: The name of the token in angle brackets.
+        """
         return f'<{self.name}>'
+
+    @property
+    def is_output(self) -> bool:
+        """Whether a model may predict this token. PAD only fills batches, so no model predicts
+        it.
+
+        Returns:
+            bool: False for PAD, True for every other token.
+        """
+        return self is not SpecialToken.PAD
 
 
 @dataclass(frozen=True, slots=True)
 class Tokenizer:
-    """Defines the mapping from activities to tokens, including special tokens."""
+    """Maps activities to the integer tokens a model reads and writes, and back.
 
-    # The activities of the train split, sorted.
+    The tokens are numbered with the special tokens first, then the train activities in sorted
+    order.
+
+    Attributes:
+        activities: The activities of the train split, sorted.
+    """
+
     activities: tuple[str, ...]
-    # Mapping from label to token, special tokens included.
+    # The token of every label, special tokens included.
     _tokens: dict[str, int] = field(init=False, repr=False, compare=False)
-    # The label of every token, indexed by it.
+    # The label of every token, indexed by the token.
     _labels: np.ndarray = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        """Initialize the mappings between labels and tokens."""
         object.__setattr__(
             self, '_tokens', {label: token for token, label in enumerate(self.labels)}
         )
@@ -57,39 +78,63 @@ class Tokenizer:
         return cls(activities=tuple(sorted({a for case in cases for a in case.activities})))
 
     @property
-    def size(self) -> int:
-        """The number of tokens, special tokens included."""
+    def vocabulary_size(self) -> int:
+        """The number of tokens, special tokens included.
+
+        Returns:
+            int: The number of labels.
+        """
         return len(self.labels)
 
     @property
     def labels(self) -> tuple[str, ...]:
-        """The label of every token: the special tokens, then the train activities."""
+        """The label of every token: the special tokens, then the train activities.
+
+        Returns:
+            tuple[str, ...]: The labels, indexed by token.
+        """
         return tuple(token.label for token in SpecialToken) + self.activities
 
-    def encode(self, activities: Iterable[str]) -> Int64[np.ndarray, ' N']:
+    def known(self, activities: Iterable[str]) -> tuple[str, ...]:
+        """Replace every activity the train split does not hold with the UNK label, so that the
+        activities read as the model sees them.
+
+        Args:
+            activities: The activities.
+
+        Returns:
+            tuple[str, ...]: The activities, `<UNK>` in place of every unknown one.
+        """
+        unknown = SpecialToken.UNK.label
+        return tuple(activity if activity in self._tokens else unknown for activity in activities)
+
+    def encode(self, activities: Iterable[str]) -> Int64[torch.Tensor, ' L']:
         """Map activities to tokens, UNK for an activity the train split does not hold.
 
         Args:
-            activities: The activities mapped.
+            activities: The activities.
 
         Returns:
-            np.ndarray: The token of every activity.
+            torch.Tensor: The token of every activity.
         """
-        return np.fromiter(
-            (self._tokens.get(activity, SpecialToken.UNK) for activity in activities),
-            dtype=np.int64,
+        return torch.tensor(
+            [self._tokens.get(activity, SpecialToken.UNK) for activity in activities],
+            dtype=torch.int64,
         )
 
-    def decode(self, tokens: Int64[np.ndarray, ' N']) -> tuple[str, ...]:
-        """Map tokens to their labels.
+    def decode(self, tokens: Int64[torch.Tensor, 'B L']) -> list[tuple[str, ...]]:
+        """Map rows of tokens, each PAD past its end, to their labels.
 
         Args:
-            tokens: The tokens mapped.
+            tokens: The tokens of every row.
 
         Returns:
-            tuple[str, ...]: The label of every token.
+            list[tuple[str, ...]]: The labels of the tokens of every row, PAD left out.
         """
-        return tuple(self._labels[tokens].tolist())
+        tokens = tokens.cpu()
+        lengths = (tokens != SpecialToken.PAD).sum(dim=1).tolist()
+        labels = self._labels[tokens.numpy()]
+        return [tuple(row[:length].tolist()) for row, length in zip(labels, lengths, strict=True)]
 
     def save(self, path: Path) -> None:
         """Write the token of every label, special tokens included, to a JSON file.

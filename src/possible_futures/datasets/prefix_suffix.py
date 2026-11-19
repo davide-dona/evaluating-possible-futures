@@ -10,26 +10,33 @@ from possible_futures.datasets.tokenizer import Tokenizer
 
 
 class PrefixSuffix(NamedTuple):
-    """The tokens of one prefix of a case and of the suffix following it."""
+    """One training example: the tokens of a prefix and of the observed suffix following it.
+
+    Attributes:
+        prefix: The tokens of the prefix.
+        suffix: The tokens of the rest of the case.
+    """
 
     prefix: Int64[torch.Tensor, ' P']
     suffix: Int64[torch.Tensor, ' L']
 
 
 class PrefixSuffixDataset(Dataset[PrefixSuffix]):
-    """Every prefix of some cases with the suffix following it, as tokens, every case encoded
-    once and shared by its prefixes and suffixes."""
+    """Every prefix of some cases, paired with the suffix that follows it.
+
+    Each case is tokenized once; its prefixes and suffixes are slices of those tokens, so the
+    dataset holds every event once however many prefixes a case has.
+    """
 
     def __init__(self, cases: Sequence[Case], tokenizer: Tokenizer) -> None:
-        """Encode the cases and index their prefixes.
-
+        """
         Args:
             cases: The cases, each with the lengths of its prefixes.
             tokenizer: Maps the activities to tokens.
         """
-        self.case_tokens = [torch.from_numpy(tokenizer.encode(case.activities)) for case in cases]
-        # One row per prefix, its case's position in `cases` and its length, [N, 2] also when N
-        # is 0. The prefixes follow the cases, shortest first within a case.
+        self.case_tokens = [tokenizer.encode(case.activities) for case in cases]
+        # One row per prefix: the position of its case in `cases`, and its length. The view keeps
+        # two columns when there are no prefixes. Prefixes follow the cases, shortest first.
         self.index = torch.tensor(
             [
                 (position, length)
@@ -43,6 +50,6 @@ class PrefixSuffixDataset(Dataset[PrefixSuffix]):
         return len(self.index)
 
     def __getitem__(self, i: int) -> PrefixSuffix:
-        case, length = self.index[i].tolist()
-        tokens = self.case_tokens[case]
+        position, length = self.index[i].tolist()
+        tokens = self.case_tokens[position]
         return PrefixSuffix(prefix=tokens[:length], suffix=tokens[length:])

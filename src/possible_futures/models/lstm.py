@@ -7,37 +7,60 @@ from torch import nn
 
 
 class LSTMState(NamedTuple):
-    """The states of one layer."""
+    """The memory of one LSTM layer for every row of a batch.
+
+    Attributes:
+        hidden: The hidden state, which the layer outputs and the next step reads.
+        cell: The cell state, the layer's long-term memory.
+    """
 
     hidden: Float[torch.Tensor, 'B H']
     cell: Float[torch.Tensor, 'B H']
 
     def select(self, rows: Int64[torch.Tensor, ' R']) -> 'LSTMState':
-        """The states of `rows` only, in their order."""
+        """Keep only some rows, such as the ones still decoding.
+
+        Args:
+            rows: The indices of the rows kept, in the order kept.
+
+        Returns:
+            LSTMState: The states `[R, H]` of the rows kept.
+        """
         return LSTMState(hidden=self.hidden[rows], cell=self.cell[rows])
 
 
 class DropoutMasks(NamedTuple):
-    """Variational dropout masks of one layer, one per row and gate, scaled by `1 / (1 - p)`."""
+    """The variational dropout masks of one layer. Each row has its own masks, one per gate,
+    which every step of a sequence reuses. A kept feature is scaled by `1 / (1 - p)`, a dropped
+    one is 0.
+
+    Attributes:
+        input: The mask on the input each gate reads.
+        hidden: The mask on the previous hidden state each gate reads.
+    """
 
     input: Float[torch.Tensor, 'B 4 I']
     hidden: Float[torch.Tensor, 'B 4 H']
 
 
 class VariationalLSTMLayer(nn.Module):
-    """LSTM layer with variational dropout on each gate's input and hidden state."""
+    """LSTM layer with variational dropout: each gate sees its input and the previous hidden
+    state through its own dropout mask, fixed for a whole sequence."""
 
     def __init__(self, *, input_size: int, hidden_size: int, dropout: float) -> None:
         """
         Args:
-            input_size: Width of every input.
-            hidden_size: Width of the hidden and cell states.
+            input_size: Width of every input, `I`.
+            hidden_size: Width of the hidden and cell states, `H`.
             dropout: Probability of dropping a gate input or hidden feature.
         """
         super().__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.dropout = dropout
+
+        # The default initialization of torch.nn.LSTM. Dimension 0 holds the four gates in the
+        # order `_step` unpacks them: input, forget, candidate, output.
         bound = 1.0 / math.sqrt(hidden_size)
         self.input_weights = nn.Parameter(
             torch.empty(4, hidden_size, input_size).uniform_(-bound, bound)
@@ -48,13 +71,21 @@ class VariationalLSTMLayer(nn.Module):
         self.bias = nn.Parameter(torch.empty(4, hidden_size).uniform_(-bound, bound))
 
     def sample_masks(self, rows: int) -> DropoutMasks:
-        """Draw one Bernoulli mask per row and gate, on the input and on the hidden state."""
+        """Sample the dropout masks of every row, keeping each feature with probability
+        `1 - dropout`.
 
-        def draw(width: int) -> Float[torch.Tensor, 'rows 4 width']:
+        Args:
+            rows: The number of rows, each with its own masks.
+
+        Returns:
+            DropoutMasks: The masks on the input and on the hidden state.
+        """
+
+        def mask(width: int) -> Float[torch.Tensor, 'B 4 W']:
             keep = torch.rand(size=(rows, 4, width), device=self.bias.device) >= self.dropout
             return keep.to(dtype=self.bias.dtype) / (1.0 - self.dropout)
 
-        return DropoutMasks(input=draw(self.input_size), hidden=draw(self.hidden_size))
+        return DropoutMasks(input=mask(self.input_size), hidden=mask(self.hidden_size))
 
     def _step(
         self,
@@ -62,15 +93,16 @@ class VariationalLSTMLayer(nn.Module):
         hidden: Float[torch.Tensor, 'B 4 H'],
         cell: Float[torch.Tensor, 'B H'],
     ) -> LSTMState:
-        """One LSTM step from an already projected input and a gate-wise masked hidden state.
+        """One LSTM step from an input already multiplied by the input weights and a hidden
+        state already masked for each gate.
 
         Args:
-            projected_inputs: `[B, 4, H]`, the input's contribution to each gate.
-            hidden: `[B, 4, H]`, the previous hidden state as each gate reads it.
-            cell: `[B, H]`, the previous cell state.
+            projected_inputs: The input's contribution to each gate.
+            hidden: The previous hidden state, as each gate reads it.
+            cell: The previous cell state.
 
         Returns:
-            The next hidden and cell states.
+            LSTMState: The next hidden and cell states.
         """
         gates = (
             projected_inputs + torch.einsum('bgk,ghk->bgh', hidden, self.hidden_weights) + self.bias
@@ -87,17 +119,17 @@ class VariationalLSTMLayer(nn.Module):
         masks: DropoutMasks,
         active: Bool[torch.Tensor, 'B T'] | None = None,
     ) -> tuple[Float[torch.Tensor, 'B T H'], LSTMState]:
-        """Run the layer over inputs `[B, T, I]` from `state`.
+        """Run the layer over a sequence of `T` inputs per row, starting from `state`.
 
         Args:
             inputs: One input per position.
             state: The hidden and cell states before the first position.
             masks: The dropout masks, shared by every position.
-            active: `[B, T]`, True where a row reads a real input and False where it keeps its
-                state, or None where every row reads a real input at every position.
+            active: True where a row reads a real input and False where it keeps its state, such
+                as at PAD. None when every row reads a real input at every position.
 
         Returns:
-            The hidden state after each position, `[B, T, H]`, and the final state.
+            The hidden state after each position, and the final state.
         """
         gate_inputs = inputs.unsqueeze(dim=2).expand(-1, -1, 4, -1)  # [B, T, I] -> [B, T, 4, I]
         gate_inputs = gate_inputs * masks.input.unsqueeze(dim=1)
@@ -125,8 +157,9 @@ class VariationalLSTM(nn.Module):
     def __init__(self, *, input_size: int, hidden_size: int, num_layers: int, dropout: float):
         """
         Args:
-            input_size: Width of the bottom layer's inputs.
-            hidden_size: Width of every layer's states.
+            input_size: Width of the bottom layer's inputs, `I`.
+            hidden_size: Width of every layer's states, `H`.
+            num_layers: Number of stacked layers.
             dropout: Probability of dropping a gate input or hidden feature.
         """
         super().__init__()
@@ -141,7 +174,14 @@ class VariationalLSTM(nn.Module):
         )
 
     def sample_masks(self, rows: int) -> list[DropoutMasks]:
-        """Draw the dropout masks of every layer, bottom first."""
+        """Sample the dropout masks of every layer, bottom first.
+
+        Args:
+            rows: The number of rows, each with its own masks.
+
+        Returns:
+            list[DropoutMasks]: The masks of every layer.
+        """
         return [layer.sample_masks(rows) for layer in self.layers]
 
     def forward_from_state(
@@ -152,19 +192,19 @@ class VariationalLSTM(nn.Module):
         masks: list[DropoutMasks],
         active: Bool[torch.Tensor, 'B T'] | None = None,
     ) -> tuple[Float[torch.Tensor, 'B T H'], list[LSTMState]]:
-        """Run the stack over inputs `[B, T, I]`, the bottom layer from `state` and every upper
-        layer from the final state of the layer below.
+        """Run the stack from a single state, such as the encoder's summary of a prefix: the
+        bottom layer starts from `state`, and every upper layer from the final state of the
+        layer below.
 
         Args:
             inputs: One input per position.
             state: The bottom layer's state before the first position.
             masks: The dropout masks of every layer.
-            active: `[B, T]`, True where a row reads a real input and False where it keeps its
-                state, or None where every row reads a real input at every position.
+            active: True where a row reads a real input and False where it keeps its state, such
+                as at PAD. None when every row reads a real input at every position.
 
         Returns:
-            The top layer's hidden state after each position, `[B, T, H]`, and every layer's
-            final state.
+            The top layer's hidden state after each position, and every layer's final state.
         """
         states = []
         for layer, layer_masks in zip(self.layers, masks, strict=True):
@@ -179,11 +219,15 @@ class VariationalLSTM(nn.Module):
         *,
         masks: list[DropoutMasks],
     ) -> tuple[Float[torch.Tensor, 'B T H'], list[LSTMState]]:
-        """Run the stack over inputs `[B, T, I]`, every layer from its own state in `states`.
+        """Continue the stack where it left off, every layer from its own state.
+
+        Args:
+            inputs: One input per position.
+            states: Every layer's state before the first position, bottom first.
+            masks: The dropout masks of every layer.
 
         Returns:
-            The top layer's hidden state after each position, `[B, T, H]`, and every layer's
-            final state.
+            The top layer's hidden state after each position, and every layer's final state.
         """
         new_states = []
         for layer, state, layer_masks in zip(self.layers, states, masks, strict=True):

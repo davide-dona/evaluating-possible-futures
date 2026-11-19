@@ -4,7 +4,14 @@ from contextlib import contextmanager
 
 
 def format_duration(seconds: float) -> str:
-    """Format a duration as `4.2s`, `3m 12s` or `1h 05m`, whichever fits it."""
+    """Format a duration as `4.2s`, `3m 12s` or `1h 05m`, whichever fits it.
+
+    Args:
+        seconds: The duration in seconds.
+
+    Returns:
+        str: The duration, in the largest unit that fits it.
+    """
     if seconds < 60:
         return f'{seconds:.1f}s'
     minutes, seconds = divmod(int(seconds), 60)
@@ -15,7 +22,12 @@ def format_duration(seconds: float) -> str:
 
 
 def banner(title: str, fields: Mapping[str, object]) -> None:
-    """Print the title of a stage and its settings, one aligned line each."""
+    """Print the title of a stage and its settings, one aligned line each.
+
+    Args:
+        title: What the stage does.
+        fields: The value of every setting, keyed by the name printed.
+    """
     print(title, flush=True)
     width = max((len(name) for name in fields), default=0)
     for name, value in fields.items():
@@ -25,7 +37,14 @@ def banner(title: str, fields: Mapping[str, object]) -> None:
 
 @contextmanager
 def step(message: str) -> Iterator[None]:
-    """Print `message` before the block runs, then how long the block took."""
+    """Print `message` before the block runs, then how long the block took.
+
+    Args:
+        message: What the block does.
+
+    Returns:
+        Iterator[None]: The context of the block.
+    """
     print(f'{message}...', flush=True)
     started = time.perf_counter()
     yield

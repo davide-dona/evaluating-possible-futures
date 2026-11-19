@@ -34,13 +34,22 @@ class ForecasterModel(StrEnum):
 
 
 class Strategy(StrEnum):
-    SAMPLED = 'sampled'
-    GREEDY = 'greedy'  # the most probable activity at every step
+    """How a forecaster chooses the next activity at every step."""
+
+    SAMPLED = 'sampled'  # at random, with its probability
+    GREEDY = 'greedy'  # the most likely activity at every step
 
 
 @dataclass
 class ForecasterConfig:
-    # The name of the forecasts, the stem of their file.
+    """Which forecaster draws the suffixes.
+
+    Attributes:
+        name: The name of the forecasts, the stem of their file.
+        model: What the draws come from.
+        strategy: How the next activity is chosen at every step.
+    """
+
     name: str = MISSING
     model: ForecasterModel = MISSING
     strategy: Strategy = MISSING
@@ -48,6 +57,17 @@ class ForecasterConfig:
 
 @dataclass
 class ForecastConfig:
+    """The settings of the forecast stage.
+
+    Attributes:
+        data: The dataset.
+        forecaster: Which forecaster draws the suffixes.
+        seed: Seeds every random choice.
+        device: The device of the model, such as `cuda:0` or `cpu`.
+        num_draws: The number of suffixes drawn for each prefix, `S`.
+        max_rows: The most suffixes drawn at once.
+    """
+
     data: DataConfig = MISSING
     forecaster: ForecasterConfig = MISSING
     seed: int = MISSING
@@ -104,7 +124,21 @@ def build_forecaster(
     rng: np.random.Generator,
     device: torch.device,
 ) -> Forecaster:
-    """The forecaster `config` asks for, built from the train split where it needs one."""
+    """Build the forecaster `config` asks for, fitting it on the train split where it needs one.
+
+    Args:
+        config: Which forecaster to build.
+        data: The dataset.
+        train: The train cases.
+        rng: Makes the random choices of the forecaster.
+        device: The device the model is loaded onto.
+
+    Returns:
+        Forecaster: The forecaster.
+
+    Raises:
+        ValueError: If the dataset has no oracle, or the forecaster has no such strategy.
+    """
     match config.model, config.strategy:
         case ForecasterModel.U_ED_LSTM, Strategy.SAMPLED:
             return UEDLSTMForecaster.load(model_dir(data.name), device=device)

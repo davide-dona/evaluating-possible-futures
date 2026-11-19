@@ -19,11 +19,18 @@ CASES_SCHEMA = pa.schema(
 
 @dataclass(frozen=True, slots=True)
 class Case:
-    """The activities and timestamps of one case, and the lengths of the prefixes taken from it."""
+    """One run of the process: its activities in time order, and the prefixes taken from it.
+
+    Attributes:
+        case_id: The identifier of the case in its log.
+        activities: The activity of every event, in time order.
+        timestamps: The UTC time of every event, in the order of `activities`.
+        prefix_lengths: The lengths of the prefixes of the case that are trained on or scored.
+    """
 
     case_id: str
     activities: tuple[str, ...]
-    timestamps: tuple[pd.Timestamp, ...]  # UTC
+    timestamps: tuple[pd.Timestamp, ...]
     prefix_lengths: range
 
     def __len__(self) -> int:
@@ -31,17 +38,29 @@ class Case:
 
     @property
     def start(self) -> pd.Timestamp:
-        """Return the timestamp of the first event in the case."""
+        """The time of the first event.
+
+        Returns:
+            pd.Timestamp: The UTC timestamp of the first event.
+        """
         return self.timestamps[0]
 
     @property
     def end(self) -> pd.Timestamp:
-        """Return the timestamp of the last event in the case."""
+        """The time of the last event.
+
+        Returns:
+            pd.Timestamp: The UTC timestamp of the last event.
+        """
         return self.timestamps[-1]
 
     @property
     def duration_days(self) -> float:
-        """Return the duration of the case in days."""
+        """The time from the first to the last event.
+
+        Returns:
+            float: The duration of the case in days.
+        """
         return (self.end - self.start).total_seconds() / 86_400.0
 
     def prefix(self, length: int) -> tuple[str, ...]:

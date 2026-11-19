@@ -9,7 +9,7 @@ from possible_futures.processes.process import END, Process
 
 @dataclass(frozen=True, slots=True)
 class MarkovChain(Process):
-    """A process whose next activity depends only on the last one.
+    """A first-order Markov chain: the next activity depends only on the last one.
 
     Attributes:
         successors: The probability of every activity, or of `END`, after each activity.
@@ -44,4 +44,12 @@ class MarkovChain(Process):
         )
 
     def next_activity_probabilities(self, prefix: tuple[str, ...]) -> dict[str, float]:
+        """The probability of every activity, or of `END`, after the last activity of `prefix`.
+
+        Args:
+            prefix: The activities so far, at least one.
+
+        Returns:
+            dict[str, float]: The probability of every activity that can follow, keyed by it.
+        """
         return self.successors[prefix[-1]]

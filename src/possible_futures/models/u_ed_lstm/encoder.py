@@ -6,13 +6,17 @@ from possible_futures.models.lstm import DropoutMasks, LSTMState, VariationalLST
 
 
 class Encoder(nn.Module):
-    """Reads the real events of a prefix with chained layers: each reads the outputs of the layer
-    below and starts from its final state."""
+    """Summarizes every prefix in one LSTM state, the starting point of the decoder.
+
+    Each layer reads the outputs of the layer below and starts from the state the layer below
+    ended in. PAD positions leave the state unchanged, so the summary only reflects the real
+    tokens.
+    """
 
     def __init__(self, *, embedding: nn.Embedding, lstm: VariationalLSTM) -> None:
         """
         Args:
-            embedding: Embeds every prefix token.
+            embedding: Turns every prefix token into a vector.
             lstm: The layers reading the embeddings.
         """
         super().__init__()
@@ -20,11 +24,18 @@ class Encoder(nn.Module):
         self.lstm = lstm
 
     def sample_masks(self, rows: int) -> list[DropoutMasks]:
-        """Draw the dropout masks of every layer, bottom first."""
+        """Sample the dropout masks of every layer, bottom first.
+
+        Args:
+            rows: The number of rows, each with its own masks.
+
+        Returns:
+            list[DropoutMasks]: The masks of every layer.
+        """
         return self.lstm.sample_masks(rows)
 
     def forward(self, prefixes: PrefixTokens, *, masks: list[DropoutMasks]) -> LSTMState:
-        """Read the real events of the prefixes.
+        """Read the real tokens of the prefixes.
 
         Args:
             prefixes: The prefix tokens.

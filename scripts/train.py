@@ -21,6 +21,15 @@ from possible_futures.training.train import TeacherForcing, train
 
 @dataclass
 class ModelConfig:
+    """The size of the U-ED-LSTM.
+
+    Attributes:
+        num_layers: Layers of the encoder and of the decoder.
+        hidden_size: Width of every LSTM state, `H`.
+        dropout: Probability of dropping a gate input or hidden feature.
+        logit_samples: Logit vectors sampled at every position to average the loss, `K`.
+    """
+
     num_layers: int = MISSING
     hidden_size: int = MISSING
     dropout: float = MISSING
@@ -29,6 +38,17 @@ class ModelConfig:
 
 @dataclass
 class TrainingConfig:
+    """How the model is trained.
+
+    Attributes:
+        epochs: The number of passes over the train prefixes.
+        batch_size: The number of prefixes in a batch.
+        target_length: The number of tokens following each prefix the model learns to predict.
+        weight_penalty: Weight of the sum of squared parameters in the loss.
+        grad_clip_norm: The largest norm of the gradient, which is rescaled when longer.
+        teacher_forcing: The teacher forcing probability of every epoch.
+    """
+
     epochs: int = MISSING
     batch_size: int = MISSING
     target_length: int = MISSING
@@ -39,12 +59,22 @@ class TrainingConfig:
 
 @dataclass
 class TrainConfig:
+    """The settings of the train stage.
+
+    Attributes:
+        data: The dataset.
+        seed: Seeds the initialization, the shuffling, the dropout and the teacher forcing.
+        device: The device the model trains on, such as `cuda:0`.
+        model: The size of the model.
+        optimizer: A partial `torch.optim.Optimizer`, built with `hydra.utils.instantiate` and
+            given the parameters of the model.
+        training: How the model is trained.
+    """
+
     data: DataConfig = MISSING
     seed: int = MISSING
     device: str = MISSING
     model: ModelConfig = MISSING
-    # A partial `torch.optim.Optimizer`, built with `hydra.utils.instantiate` and given the
-    # parameters of the model.
     optimizer: Any = MISSING
     training: TrainingConfig = MISSING
 
@@ -76,7 +106,7 @@ def main(config: TrainConfig) -> None:
             load_cases(split_file(name, Split.TRAIN)), tokenizer=tokenizer
         )
 
-    model = UEDLSTM(vocabulary_size=tokenizer.size, **config.model).to(device)
+    model = UEDLSTM(vocabulary_size=tokenizer.vocabulary_size, **config.model).to(device)
     print(f'{sum(p.numel() for p in model.parameters()):,} parameters', flush=True)
 
     optimizer = instantiate(config.optimizer)(params=model.parameters())

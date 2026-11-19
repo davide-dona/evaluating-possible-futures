@@ -23,11 +23,19 @@ from possible_futures.runs.paths import (
 
 @dataclass
 class EvaluateConfig:
+    """The settings of the evaluate stage.
+
+    Attributes:
+        data: The dataset.
+        forecasts: The name of the forecasts scored, the stem of their file.
+        workers: Processes scoring the forecasts in parallel.
+        metrics: The `Metric`s the forecasts are scored with, built with
+            `hydra.utils.instantiate`.
+    """
+
     data: DataConfig = MISSING
-    # The name of the forecasts scored, the stem of their file.
     forecasts: str = MISSING
     workers: int = MISSING
-    # The `Metric`s the forecasts are scored with, built with `hydra.utils.instantiate`.
     metrics: list[Any] = field(default_factory=list)
 
 
@@ -37,15 +45,15 @@ ConfigStore.instance().store(name='evaluate_schema', node=EvaluateConfig)
 @hydra.main(version_base='1.3', config_path='../config', config_name='evaluate')
 def main(config: EvaluateConfig) -> None:
     """Score one set of forecasts against the test suffixes and write its mean scores."""
-    name, forecasts = config.data.name, config.forecasts
-    path = forecasts_file(name, forecasts)
+    name, forecasts_name = config.data.name, config.forecasts
+    path = forecasts_file(name, forecasts_name)
     metrics = [instantiate(metric) for metric in config.metrics]
     names = [metric.name for metric in metrics]
     if len(set(names)) < len(names):
         raise ValueError(f'The metrics share a name: {names}')
-    output = scores_file(name, forecasts)
+    output = scores_file(name, forecasts_name)
     banner(
-        f'Scoring the {forecasts} suffixes of "{name}"',
+        f'Scoring the {forecasts_name} suffixes of "{name}"',
         {
             'forecasts': path,
             'metrics': ', '.join(names),

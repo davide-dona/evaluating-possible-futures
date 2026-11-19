@@ -39,7 +39,14 @@ class SyntheticProcess(Process):
         return f'P(B | A) = {self.p_b}, P(E | B, D) = {self.q_b}, P(E | C, D) = {self.q_c}'
 
     def next_activity_probabilities(self, prefix: tuple[str, ...]) -> dict[str, float]:
-        """Return the true probabilities of the next activity after `prefix`."""
+        """The true probability of every activity, or of `END`, right after `prefix`.
+
+        Args:
+            prefix: The activities so far.
+
+        Returns:
+            dict[str, float]: The probability of every activity that can follow, keyed by it.
+        """
         match prefix:
             case ():
                 return {'A': 1.0}
@@ -56,12 +63,12 @@ class SyntheticProcess(Process):
                 return {END: 1.0}
 
     def simulate(self, *, num_cases: int, rng: np.random.Generator) -> list[Case]:
-        """Draw cases from the process, starting as a Poisson process of one case per hour and
-        one event per hour within a case.
+        """Sample cases from the process. Cases start at random, one per hour on average (a
+        Poisson process), and their events follow one hour apart.
 
         Args:
-            num_cases: The number of cases drawn.
-            rng: Draws the start and the activities of every case.
+            num_cases: The number of cases sampled.
+            rng: Samples the start and the activities of every case.
 
         Returns:
             list[Case]: The cases in order of their start, each with every prefix that leaves a
