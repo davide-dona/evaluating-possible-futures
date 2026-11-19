@@ -4,14 +4,16 @@ from pathlib import Path
 from typing import NamedTuple, Self
 
 import torch
-import torch.nn.functional as F
 from jaxtyping import Float, Int64
 from safetensors.torch import load_file, save_file
 from torch import nn
 
 from possible_futures.datasets.collation import PrefixTokens
 from possible_futures.datasets.tokenizer import SpecialToken
-from possible_futures.models.lstm import GateDropoutStack, GateMasks, LSTMState
+from possible_futures.models.lstm import GateDropoutStack, LSTMState
+from possible_futures.models.u_ed_lstm.decoder import Decoder
+from possible_futures.models.u_ed_lstm.encoder import Encoder
+from possible_futures.models.u_ed_lstm.logits import GaussianHead, GaussianLogits
 
 _WEIGHTS_FILE = 'model.safetensors'
 _ARGUMENTS_FILE = 'arguments.json'
@@ -29,170 +31,12 @@ def _embedding_dim(num_classes: int) -> int:
     return min(600, round(1.6 * num_classes**0.56))
 
 
-def _to_classes(tokens: Int64[torch.Tensor, '*shape']) -> Int64[torch.Tensor, '*shape']:
-    """The output class of every token, UNK and up.
-
-    Args:
-        tokens: The tokens, UNK and up.
-
-    Returns:
-        torch.Tensor: The output class of every token.
-    """
-    return tokens - SpecialToken.UNK
-
-
-def _to_tokens(classes: Int64[torch.Tensor, '*shape']) -> Int64[torch.Tensor, '*shape']:
-    """The token of every output class.
-
-    Args:
-        classes: The output classes.
-
-    Returns:
-        torch.Tensor: The token of every class.
-    """
-    return classes + SpecialToken.UNK
-
-
-class GaussianLogits(NamedTuple):
-    """Independent Gaussian logits over the output classes."""
-
-    mean: Float[torch.Tensor, '*batch C']
-    log_variance: Float[torch.Tensor, '*batch C']
-
-    def draw(self, *, samples: int) -> Float[torch.Tensor, 'samples *batch C']:
-        """Draw `samples` logit vectors per distribution."""
-        noise = torch.randn(size=(samples, *self.mean.shape), device=self.mean.device)
-        return self.mean + (0.5 * self.log_variance).exp() * noise
-
-
 class Loss(NamedTuple):
     """The training objective: the `total` to backpropagate and the terms it sums."""
 
     total: Float[torch.Tensor, '']
     data: float
     penalty: float
-
-
-class Encoder(nn.Module):
-    """Reads the real events of a prefix with chained layers: each reads the outputs of the layer
-    below and starts from its final state."""
-
-    def __init__(self, *, embedding: nn.Embedding, stack: GateDropoutStack) -> None:
-        """
-        Args:
-            embedding: Embeds every prefix token.
-            stack: The layers reading the embeddings.
-        """
-        super().__init__()
-        self.embedding = embedding
-        self.stack = stack
-
-    def sample_masks(self, rows: int) -> list[GateMasks]:
-        """Draw the dropout masks of every layer, bottom first."""
-        return self.stack.sample_masks(rows)
-
-    def forward(self, prefixes: PrefixTokens, *, masks: list[GateMasks]) -> LSTMState:
-        """Read the real events of the prefixes.
-
-        Args:
-            prefixes: The prefix tokens.
-            masks: The dropout masks, one per layer.
-
-        Returns:
-            LSTMState: The top layer's final state.
-        """
-        inputs = self.embedding(prefixes.tokens)  # [B, P] -> [B, P, D]
-        positions = torch.arange(end=inputs.size(dim=1), device=inputs.device)
-        advancing = positions.unsqueeze(dim=0) < prefixes.lengths.unsqueeze(dim=1)  # [B, P]
-        zeros = inputs.new_zeros(size=(inputs.size(dim=0), self.stack.hidden_size))
-        _, states = self.stack.forward_chained(
-            inputs=inputs,
-            state=LSTMState(hidden=zeros, cell=zeros),
-            masks=masks,
-            advancing=advancing,
-        )
-        return states[-1]
-
-
-class Decoder(nn.Module):
-    """Predicts the logit distribution of the next event from the previous one.
-
-    At its first step the bottom layer starts from the encoder's final state and each upper layer
-    from the state the layer below just reached; from then on every layer carries its own state.
-    """
-
-    def __init__(
-        self,
-        *,
-        embedding: nn.Embedding,
-        stack: GateDropoutStack,
-        mean_head: nn.Linear,
-        log_variance_head: nn.Linear,
-    ) -> None:
-        """
-        Args:
-            embedding: Embeds every input token.
-            stack: The layers reading the embeddings.
-            mean_head: Maps the top layer's hidden state to the means of the logits.
-            log_variance_head: Maps the top layer's hidden state to their log variances.
-        """
-        super().__init__()
-        self.embedding = embedding
-        self.stack = stack
-        self.mean_head = mean_head
-        self.log_variance_head = log_variance_head
-
-    def sample_masks(self, rows: int) -> list[GateMasks]:
-        """Draw the dropout masks of every layer, bottom first."""
-        return self.stack.sample_masks(rows)
-
-    def start(
-        self, tokens: Int64[torch.Tensor, ' B'], encoded: LSTMState, *, masks: list[GateMasks]
-    ) -> tuple[GaussianLogits, list[LSTMState]]:
-        """Read the first input of every row, starting from the encoder's final state.
-
-        Args:
-            tokens: `[B]` the last prefix event of every row.
-            encoded: The encoder's final state.
-            masks: The dropout masks, one per layer.
-
-        Returns:
-            The logits `[B, C]` of the next event, and each layer's new state.
-        """
-        inputs = self.embedding(tokens).unsqueeze(dim=1)  # [B] -> [B, 1, D]
-        outputs, states = self.stack.forward_chained(inputs=inputs, state=encoded, masks=masks)
-        return self._logits(outputs), states
-
-    def step(
-        self, tokens: Int64[torch.Tensor, ' B'], states: list[LSTMState], *, masks: list[GateMasks]
-    ) -> tuple[GaussianLogits, list[LSTMState]]:
-        """Read one input per row after the first, every layer from its own state.
-
-        Args:
-            tokens: `[B]` the previous event of every row.
-            states: Each layer's state.
-            masks: The dropout masks, one per layer.
-
-        Returns:
-            The logits `[B, C]` of the next event, and each layer's new state.
-        """
-        inputs = self.embedding(tokens).unsqueeze(dim=1)  # [B] -> [B, 1, D]
-        outputs, states = self.stack(inputs=inputs, states=states, masks=masks)
-        return self._logits(outputs), states
-
-    def _logits(self, outputs: Float[torch.Tensor, 'B 1 H']) -> GaussianLogits:
-        """The logit distribution of the next event, from the top layer's outputs.
-
-        Args:
-            outputs: The top layer's hidden state after the step.
-
-        Returns:
-            GaussianLogits: The logits `[B, C]` of the next event.
-        """
-        features = outputs.squeeze(dim=1)  # [B, 1, H] -> [B, H]
-        return GaussianLogits(
-            mean=self.mean_head(features), log_variance=self.log_variance_head(features)
-        )
 
 
 class UEDLSTM(nn.Module):
@@ -241,20 +85,12 @@ class UEDLSTM(nn.Module):
                 input_size=width, hidden_size=hidden_size, num_layers=num_layers, dropout=dropout
             )
 
-        def head() -> nn.Linear:
-            return nn.Linear(in_features=hidden_size, out_features=num_classes)
-
         # The order the parts are built in sets the random init of every parameter.
         encoder_embedding, decoder_embedding = embedding(), embedding()
         encoder_stack, decoder_stack = stack(), stack()
-        mean_head, log_variance_head = head(), head()
+        head = GaussianHead(hidden_size=hidden_size, num_classes=num_classes)
         self.encoder = Encoder(embedding=encoder_embedding, stack=encoder_stack)
-        self.decoder = Decoder(
-            embedding=decoder_embedding,
-            stack=decoder_stack,
-            mean_head=mean_head,
-            log_variance_head=log_variance_head,
-        )
+        self.decoder = Decoder(embedding=decoder_embedding, stack=decoder_stack, head=head)
 
     def forward(
         self, prefixes: PrefixTokens, targets: Int64[torch.Tensor, 'B T'], *, forced: Sequence[bool]
@@ -278,16 +114,10 @@ class UEDLSTM(nn.Module):
         )
         steps = [logits]
         for position, force in enumerate(forced):
-            if force:
-                inputs = targets[:, position]
-            else:
-                inputs = _to_tokens(logits.mean.argmax(dim=-1))
+            inputs = targets[:, position] if force else logits.most_likely_tokens()
             logits, states = self.decoder.step(tokens=inputs, states=states, masks=masks)
             steps.append(logits)
-        return GaussianLogits(
-            mean=torch.stack([step.mean for step in steps], dim=1),  # T x [B, C] -> [B, T, C]
-            log_variance=torch.stack([step.log_variance for step in steps], dim=1),
-        )
+        return GaussianLogits.stack(steps)
 
     def loss(
         self, logits: GaussianLogits, targets: Int64[torch.Tensor, 'B T'], *, weight_penalty: float
@@ -304,10 +134,7 @@ class UEDLSTM(nn.Module):
         Returns:
             Loss: The total to backpropagate and the terms it sums.
         """
-        drawn = logits.draw(samples=self.logit_samples)  # [samples, B, T, C]
-        # [B, T] -> [samples, B, T]
-        classes = _to_classes(targets).expand(self.logit_samples, -1, -1)
-        data = F.cross_entropy(input=drawn.flatten(end_dim=2), target=classes.flatten())
+        data = logits.cross_entropy(targets, samples=self.logit_samples)
         penalty = weight_penalty * sum(parameter.square().sum() for parameter in self.parameters())
         return Loss(total=data + penalty, data=data.item(), penalty=penalty.item())
 
@@ -343,9 +170,7 @@ class UEDLSTM(nn.Module):
                 logits, states = self.decoder.start(tokens=inputs, encoded=encoded, masks=masks)
             else:
                 logits, states = self.decoder.step(tokens=inputs, states=states, masks=masks)
-            drawn = logits.draw(samples=1).squeeze(dim=0)  # [1, B, C] -> [B, C]
-            classes = torch.multinomial(input=drawn.softmax(dim=-1), num_samples=1)
-            emitted = _to_tokens(classes.squeeze(dim=1))  # [B, 1] -> [B]
+            emitted = logits.sample_tokens()
             continuing = (emitted != SpecialToken.EOS).nonzero().squeeze(dim=1)
             live, inputs = live[continuing], emitted[continuing]
             tokens[live, position] = inputs

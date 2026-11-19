@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 
 from possible_futures.datasets.collation import PrefixSuffixBatch
 from possible_futures.datasets.prefix_suffix import PrefixSuffixDataset
-from possible_futures.models.u_ed_lstm import UEDLSTM
+from possible_futures.models.u_ed_lstm.model import UEDLSTM
 
 
 @dataclass(slots=True)

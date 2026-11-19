@@ -12,7 +12,7 @@ from possible_futures.cases import load_cases
 from possible_futures.datasets.prefix_suffix import PrefixSuffixDataset
 from possible_futures.datasets.tokenizer import Tokenizer
 from possible_futures.forecasters.u_ed_lstm import UEDLSTMForecaster
-from possible_futures.models.u_ed_lstm import UEDLSTM
+from possible_futures.models.u_ed_lstm.model import UEDLSTM
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, format_duration, step
 from possible_futures.runs.paths import Split, model_dir, split_file, tokenizer_file

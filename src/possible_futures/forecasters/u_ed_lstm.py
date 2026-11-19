@@ -8,7 +8,7 @@ import torch
 from possible_futures.datasets.collation import PrefixTokens
 from possible_futures.datasets.tokenizer import SpecialToken, Tokenizer
 from possible_futures.forecasters.forecaster import Forecaster
-from possible_futures.models.u_ed_lstm import UEDLSTM
+from possible_futures.models.u_ed_lstm.model import UEDLSTM
 
 _TOKENIZER_FILE = 'tokenizer.json'
 
