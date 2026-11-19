@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Self
 
-import numpy as np
 import torch
 
 from possible_futures.datasets.collation import PrefixTokens
@@ -20,7 +19,6 @@ class UEDLSTMForecaster(Forecaster):
 
     model: UEDLSTM
     tokenizer: Tokenizer  # the tokenizer the model was trained on
-    device: torch.device  # the device of the model
 
     def save(self, directory: Path) -> None:
         """Write the model and the tokenizer it was trained with.
@@ -45,18 +43,17 @@ class UEDLSTMForecaster(Forecaster):
         return cls(
             model=UEDLSTM.load(directory, device=device),
             tokenizer=Tokenizer.load(directory / _TOKENIZER_FILE),
-            device=device,
         )
 
     def draw(
         self, prefixes: Sequence[tuple[str, ...]], *, num_draws: int, max_steps: int
     ) -> list[list[tuple[str, ...]]]:
+        device = next(self.model.parameters()).device
         tokens = PrefixTokens.pad([torch.from_numpy(self.tokenizer.encode(p)) for p in prefixes])
-        drawn = self.model.draw(tokens.to(self.device), num_draws=num_draws, max_steps=max_steps)
+        drawn = self.model.draw(tokens.to(device), num_draws=num_draws, max_steps=max_steps)
         rows = drawn.flatten(end_dim=1).cpu().numpy()  # [B, S, L] -> [B * S, L]
         lengths = (rows != SpecialToken.PAD).sum(axis=1)
-        labels = np.array(self.tokenizer.labels, dtype=object)
         suffixes = [
-            tuple(labels[row[:length]].tolist()) for row, length in zip(rows, lengths, strict=True)
+            self.tokenizer.decode(row[:length]) for row, length in zip(rows, lengths, strict=True)
         ]
         return [suffixes[start : start + num_draws] for start in range(0, len(suffixes), num_draws)]

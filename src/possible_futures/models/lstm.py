@@ -2,7 +2,7 @@ import math
 from typing import NamedTuple
 
 import torch
-from jaxtyping import Bool, Float
+from jaxtyping import Bool, Float, Int64
 from torch import nn
 
 
@@ -11,6 +11,10 @@ class LSTMState(NamedTuple):
 
     hidden: Float[torch.Tensor, 'B H']
     cell: Float[torch.Tensor, 'B H']
+
+    def select(self, rows: Int64[torch.Tensor, ' R']) -> 'LSTMState':
+        """The states of `rows` only, in their order."""
+        return LSTMState(hidden=self.hidden[rows], cell=self.cell[rows])
 
 
 class GateMasks(NamedTuple):

@@ -34,12 +34,15 @@ class Tokenizer:
     activities: tuple[str, ...]
     # Mapping from label to token, special tokens included.
     _tokens: dict[str, int] = field(init=False, repr=False, compare=False)
+    # The label of every token, indexed by it.
+    _labels: np.ndarray = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        """Initialize the mapping from label to token."""
+        """Initialize the mappings between labels and tokens."""
         object.__setattr__(
             self, '_tokens', {label: token for token, label in enumerate(self.labels)}
         )
+        object.__setattr__(self, '_labels', np.array(self.labels, dtype=object))
 
     @classmethod
     def fit(cls, cases: Sequence[Case]) -> Self:
@@ -76,6 +79,17 @@ class Tokenizer:
             (self._tokens.get(activity, SpecialToken.UNK) for activity in activities),
             dtype=np.int64,
         )
+
+    def decode(self, tokens: Int64[np.ndarray, ' N']) -> tuple[str, ...]:
+        """Map tokens to their labels.
+
+        Args:
+            tokens: The tokens mapped.
+
+        Returns:
+            tuple[str, ...]: The label of every token.
+        """
+        return tuple(self._labels[tokens].tolist())
 
     def save(self, path: Path) -> None:
         """Write the token of every label, special tokens included, to a JSON file.

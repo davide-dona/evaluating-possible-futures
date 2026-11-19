@@ -100,7 +100,7 @@ def main(config: TrainConfig) -> None:
             f'train {record.train_loss:.4f}  {format_duration(record.seconds)}',
             flush=True,
         )
-    UEDLSTMForecaster(model=model, tokenizer=tokenizer, device=device).save(model_dir(name))
+    UEDLSTMForecaster(model=model, tokenizer=tokenizer).save(model_dir(name))
     print(f'Wrote the final weights and the tokenizer to {model_dir(name)}')
 
 
