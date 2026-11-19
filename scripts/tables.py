@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 import hydra
+import pandas as pd
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
@@ -53,7 +54,13 @@ def main(config: TablesConfig) -> None:
         path = output / f'{name}.tex'
         with step(f'Writing {path}'):
             means = {
-                config.datasets[dataset]: load_scores(scores_file(dataset))
+                config.datasets[dataset]: pd.DataFrame.from_dict(
+                    {
+                        decoding: load_scores(scores_file(dataset, decoding))
+                        for decoding in table.decodings
+                    },
+                    orient='index',
+                )
                 for dataset in table.datasets
             }
             decodings = {decoding: config.decodings[decoding] for decoding in table.decodings}

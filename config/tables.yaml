@@ -35,7 +35,7 @@ decodings:
   oracle_greedy: \OracleGreedy
   markov_sampled: \MarkovSampled
   markov_greedy: \MarkovGreedy
-# The columns of every table of scores, keyed by their column in scores.csv and in the order
+# The columns of every table of scores, keyed by their name in the scores files and in the order
 # printed, each with its LaTeX header and whether a higher mean is better.
 metrics:
   DLS:

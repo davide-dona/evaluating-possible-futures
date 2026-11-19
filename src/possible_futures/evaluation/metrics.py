@@ -11,6 +11,8 @@ from possible_futures.distances import Distance, NormalizedDamerauLevenshtein
 class Metric(Protocol):
     """A score of the suffixes drawn for one prefix against its observed suffix."""
 
+    name: str  # labels the mean score in the scores files and tables
+
     def __call__(self, *, draws: Sequence[tuple[int, ...]], observed: tuple[int, ...]) -> float:
         """The score of the draws, each a tuple of tokens."""
         ...
@@ -21,6 +23,7 @@ class EnergyScore(Metric):
     """The fair energy score of the draws, `1/K sum_i d(x_i, y) - 1/(2 K (K - 1)) sum_{i != j}
     d(x_i, x_j)`, whose second term is 0 for a single draw. Lower is better."""
 
+    name: str
     distance: Distance
 
     def __call__(self, *, draws: Sequence[tuple[int, ...]], observed: tuple[int, ...]) -> float:
@@ -40,9 +43,12 @@ class EnergyScore(Metric):
         return distance_to_observed - distance_between_draws
 
 
+@dataclass(frozen=True, slots=True)
 class MeanDLSimilarity(Metric):
     """The mean Damerau-Levenshtein similarity of the draws to the observed suffix, 1 minus
     their normalized Damerau-Levenshtein distance. Higher is better."""
+
+    name: str
 
     def __call__(self, *, draws: Sequence[tuple[int, ...]], observed: tuple[int, ...]) -> float:
         distances = NormalizedDamerauLevenshtein()(left=draws, right=[observed])  # [K, 1]

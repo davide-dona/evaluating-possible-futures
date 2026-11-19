@@ -28,8 +28,7 @@ def scores_table(
     Args:
         means: The mean scores of every decoding, one row each, for every dataset, keyed by the
             name the table prints. A table of a single dataset has no dataset column.
-        decodings: The macro of every decoding, in the order of the rows. A decoding a dataset
-            was not scored on has no row.
+        decodings: The macro of every decoding, in the order of the rows.
         metrics: The column of every metric, keyed by its name in `means`, in the order of
             the columns.
 
@@ -47,8 +46,7 @@ def scores_table(
         ' & '.join(headers) + r' \\',
     ]
     for index, (dataset, scores) in enumerate(means.items()):
-        rows = scores.loc[[decoding for decoding in decodings if decoding in scores.index]]
-        cells = rows[list(metrics)].round(DECIMALS)
+        cells = scores.loc[list(decodings), list(metrics)].round(DECIMALS)
         best = {
             metric: cells[metric].max() if column.higher_is_better else cells[metric].min()
             for metric, column in metrics.items()

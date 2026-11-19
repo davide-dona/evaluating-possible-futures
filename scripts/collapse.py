@@ -11,7 +11,7 @@ from possible_futures.inference.draws import Decoding
 from possible_futures.inference.medoid import medoids
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
-from possible_futures.runs.paths import Stage, sampled_file, stage_dir, vocabulary_file
+from possible_futures.runs.paths import decoding_file, sampled_file, vocabulary_file
 
 
 @dataclass
@@ -29,7 +29,7 @@ def main(config: CollapseConfig) -> None:
     """Keep only the medoid of the sampled suffixes of every test prefix."""
     name = config.data.name
     sampled = sampled_file(name)
-    path = stage_dir(name, Stage.COLLAPSE) / 'medoid.parquet'
+    path = decoding_file(name, 'medoid')
     distance = instantiate(config.distance)
     banner(
         f'Collapsing the sampled suffixes of "{name}"',

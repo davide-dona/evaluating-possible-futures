@@ -18,7 +18,6 @@ class Stage(StrEnum):
 
     TRAIN = 'train'
     DECODE = 'decode'
-    COLLAPSE = 'collapse'
     EVALUATE = 'evaluate'
 
 
@@ -43,8 +42,8 @@ def model_dir(dataset: str) -> Path:
     return stage_dir(dataset, Stage.TRAIN)
 
 
-def decoding_file(dataset: str, decoder: str) -> Path:
-    return stage_dir(dataset, Stage.DECODE) / f'{decoder}.parquet'
+def decoding_file(dataset: str, decoding: str) -> Path:
+    return stage_dir(dataset, Stage.DECODE) / f'{decoding}.parquet'
 
 
 def sampled_file(dataset: str) -> Path:
@@ -52,5 +51,5 @@ def sampled_file(dataset: str) -> Path:
     return decoding_file(dataset, 'sampled')
 
 
-def scores_file(dataset: str) -> Path:
-    return stage_dir(dataset, Stage.EVALUATE) / 'scores.csv'
+def scores_file(dataset: str, decoding: str) -> Path:
+    return stage_dir(dataset, Stage.EVALUATE) / f'{decoding}.json'
