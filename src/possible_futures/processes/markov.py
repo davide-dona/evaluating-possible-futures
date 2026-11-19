@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Self
 
 from possible_futures.cases import Case
-from possible_futures.models.process import END, Process
+from possible_futures.processes.process import END, Process
 
 
 @dataclass(frozen=True, slots=True)

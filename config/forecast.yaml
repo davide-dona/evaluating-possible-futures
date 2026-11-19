@@ -1,0 +1,15 @@
+defaults:
+- forecast_schema
+- output/default
+- dataset: ???
+- _self_
+# The forecaster, overriding the defaults below where it needs to.
+- forecaster: ???
+seed: 42
+device: cuda:0
+num_draws: 100
+# The most draws forecast at once.
+max_rows: 8192
+hydra:
+  # The forecasts of a dataset share the stage directory, so each keeps its own Hydra record.
+  output_subdir: .hydra/${forecaster.name}

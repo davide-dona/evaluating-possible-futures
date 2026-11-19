@@ -1,10 +1,8 @@
 import json
 from collections.abc import Sequence
-from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple, Self
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 from jaxtyping import Float, Int64
@@ -12,13 +10,11 @@ from safetensors.torch import load_file, save_file
 from torch import nn
 
 from possible_futures.datasets.collation import PrefixTokens
-from possible_futures.datasets.tokenizer import SpecialToken, Tokenizer
-from possible_futures.models.decoder import Decoder
+from possible_futures.datasets.tokenizer import SpecialToken
 from possible_futures.models.lstm import GateDropoutStack, GateMasks, LSTMState
 
 _WEIGHTS_FILE = 'model.safetensors'
 _ARGUMENTS_FILE = 'arguments.json'
-_TOKENIZER_FILE = 'tokenizer.json'
 
 
 def embedding_dim(num_classes: int) -> int:
@@ -328,51 +324,3 @@ class UEDLSTM(nn.Module):
         model = cls(**json.loads((directory / _ARGUMENTS_FILE).read_text()))
         model.load_state_dict(load_file(directory / _WEIGHTS_FILE, device=str(device)))
         return model.to(device).eval()
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class UEDLSTMDecoder(Decoder):
-    """Draws suffixes from a U-ED-LSTM, mapping activities to its tokens and back."""
-
-    model: UEDLSTM
-    tokenizer: Tokenizer  # the tokenizer the model was trained on
-    device: torch.device  # the device of the model
-
-    def save(self, directory: Path) -> None:
-        """Write the model and the tokenizer it was trained with.
-
-        Args:
-            directory: The directory written into. Created if it does not exist.
-        """
-        self.model.save(directory)
-        self.tokenizer.save(directory / _TOKENIZER_FILE)
-
-    @classmethod
-    def load(cls, directory: Path, *, device: torch.device) -> Self:
-        """Rebuild a decoder written by `save`.
-
-        Args:
-            directory: The directory `save` wrote into.
-            device: The device the model is loaded onto.
-
-        Returns:
-            UEDLSTMDecoder: The model in evaluation mode, on `device`, with its tokenizer.
-        """
-        return cls(
-            model=UEDLSTM.load(directory, device=device),
-            tokenizer=Tokenizer.load(directory / _TOKENIZER_FILE),
-            device=device,
-        )
-
-    def draw(
-        self, prefixes: Sequence[tuple[str, ...]], *, num_draws: int, max_steps: int
-    ) -> list[list[tuple[str, ...]]]:
-        tokens = PrefixTokens.pad([torch.from_numpy(self.tokenizer.encode(p)) for p in prefixes])
-        drawn = self.model.draw(tokens.to(self.device), num_draws=num_draws, max_steps=max_steps)
-        rows = drawn.flatten(end_dim=1).cpu().numpy()  # [B, S, L] -> [B * S, L]
-        lengths = (rows != SpecialToken.PAD).sum(axis=1)
-        labels = np.array(self.tokenizer.labels, dtype=object)
-        suffixes = [
-            tuple(labels[row[:length]].tolist()) for row, length in zip(rows, lengths, strict=True)
-        ]
-        return [suffixes[start : start + num_draws] for start in range(0, len(suffixes), num_draws)]

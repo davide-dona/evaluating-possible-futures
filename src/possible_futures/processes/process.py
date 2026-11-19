@@ -1,10 +1,7 @@
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable
 
 import numpy as np
-
-from possible_futures.models.decoder import Decoder
 
 # The pseudo-activity that ends a case.
 END = '<END>'
@@ -37,7 +34,7 @@ class Process(ABC):
         Returns:
             tuple[str, ...]: The activities of the suffix.
         """
-        return self._decode(
+        return self._suffix(
             prefix, pick=lambda options: _choose(options, rng=rng), max_steps=max_steps
         )
 
@@ -51,11 +48,11 @@ class Process(ABC):
         Returns:
             tuple[str, ...]: The activities of the suffix.
         """
-        return self._decode(
+        return self._suffix(
             prefix, pick=lambda options: max(options, key=options.get), max_steps=max_steps
         )
 
-    def _decode(
+    def _suffix(
         self,
         prefix: tuple[str, ...],
         *,
@@ -79,41 +76,6 @@ class Process(ABC):
                 break
             suffix.append(activity)
         return tuple(suffix)
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class SamplingDecoder(Decoder):
-    """Draws every suffix from a process one activity at a time."""
-
-    process: Process
-    rng: np.random.Generator
-
-    def draw(
-        self, prefixes: Sequence[tuple[str, ...]], *, num_draws: int, max_steps: int
-    ) -> list[list[tuple[str, ...]]]:
-        return [
-            [
-                self.process.sample_suffix(prefix, rng=self.rng, max_steps=max_steps)
-                for _ in range(num_draws)
-            ]
-            for prefix in prefixes
-        ]
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class GreedyDecoder(Decoder):
-    """Continues every prefix with the most probable activity of a process at every step, so
-    all draws of a prefix are the same suffix."""
-
-    process: Process
-
-    def draw(
-        self, prefixes: Sequence[tuple[str, ...]], *, num_draws: int, max_steps: int
-    ) -> list[list[tuple[str, ...]]]:
-        return [
-            [self.process.greedy_suffix(prefix, max_steps=max_steps)] * num_draws
-            for prefix in prefixes
-        ]
 
 
 def _choose(options: dict[str, float], *, rng: np.random.Generator) -> str:

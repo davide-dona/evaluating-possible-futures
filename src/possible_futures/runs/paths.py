@@ -17,7 +17,7 @@ class Stage(StrEnum):
     """The stages writing under `OUTPUTS`, named as their scripts."""
 
     TRAIN = 'train'
-    DECODE = 'decode'
+    FORECAST = 'forecast'
     EVALUATE = 'evaluate'
 
 
@@ -43,7 +43,7 @@ def model_dir(dataset: str) -> Path:
 
 
 def forecasts_file(dataset: str, forecasts: str) -> Path:
-    return stage_dir(dataset, Stage.DECODE) / f'{forecasts}.parquet'
+    return stage_dir(dataset, Stage.FORECAST) / f'{forecasts}.parquet'
 
 
 def scores_file(dataset: str, forecasts: str) -> Path:

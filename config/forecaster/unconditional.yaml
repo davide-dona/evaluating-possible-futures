@@ -1,6 +1,6 @@
 # @package _global_
 # The suffixes of train, drawn whatever the prefix.
-decoder:
+forecaster:
   name: unconditional
   model: UNCONDITIONAL
   strategy: SAMPLED

@@ -11,7 +11,8 @@ from omegaconf import MISSING, OmegaConf
 from possible_futures.cases import load_cases
 from possible_futures.datasets.prefix_suffix import PrefixSuffixDataset
 from possible_futures.datasets.tokenizer import Tokenizer
-from possible_futures.models.u_ed_lstm import UEDLSTM, UEDLSTMDecoder
+from possible_futures.forecasters.u_ed_lstm import UEDLSTMForecaster
+from possible_futures.models.u_ed_lstm import UEDLSTM
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, format_duration, step
 from possible_futures.runs.paths import Split, model_dir, split_file, tokenizer_file
@@ -99,7 +100,7 @@ def main(config: TrainConfig) -> None:
             f'train {record.train_loss:.4f}  {format_duration(record.seconds)}',
             flush=True,
         )
-    UEDLSTMDecoder(model=model, tokenizer=tokenizer, device=device).save(model_dir(name))
+    UEDLSTMForecaster(model=model, tokenizer=tokenizer, device=device).save(model_dir(name))
     print(f'Wrote the final weights and the tokenizer to {model_dir(name)}')
 
 

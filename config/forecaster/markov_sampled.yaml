@@ -1,6 +1,6 @@
 # @package _global_
 # A first-order Markov chain fitted on train, sampled.
-decoder:
+forecaster:
   name: markov_sampled
   model: MARKOV
   strategy: SAMPLED

@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from possible_futures.cases import Case
-from possible_futures.models.process import END, Process
+from possible_futures.processes.process import END, Process
 
 # When the first simulated case starts.
 _ORIGIN = pd.Timestamp('2026-01-01')

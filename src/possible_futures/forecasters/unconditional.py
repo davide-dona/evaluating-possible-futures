@@ -5,11 +5,11 @@ from typing import Self
 import numpy as np
 
 from possible_futures.cases import Case
-from possible_futures.models.decoder import Decoder
+from possible_futures.forecasters.forecaster import Forecaster
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class UnconditionalDecoder(Decoder):
+class UnconditionalForecaster(Forecaster):
     """Ignores the prefix: every draw is the suffix of a train prefix, drawn uniformly.
 
     The train suffixes are never longer than the longest train case, so draws are not truncated
@@ -28,7 +28,7 @@ class UnconditionalDecoder(Decoder):
             rng: Draws the suffixes.
 
         Returns:
-            UnconditionalDecoder: The decoder drawing among the suffixes, case after case and
+            UnconditionalForecaster: The forecaster drawing among the suffixes, case after case and
                 shortest prefix first within a case.
         """
         suffixes = tuple(case.suffix(length) for case in cases for length in case.prefix_lengths)

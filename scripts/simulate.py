@@ -6,8 +6,8 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
 from possible_futures.cases import num_events
-from possible_futures.models.synthetic import SyntheticProcess
 from possible_futures.preprocessing.log import write_log
+from possible_futures.processes.synthetic import SyntheticProcess
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import original_log_file

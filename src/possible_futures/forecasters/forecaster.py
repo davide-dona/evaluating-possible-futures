@@ -1,13 +1,33 @@
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Protocol
 
 from possible_futures.cases import Case
 from possible_futures.forecasts import Forecast, ForecastWriter
-from possible_futures.models.decoder import Decoder
 
 
-def write_decoding(
-    decoder: Decoder,
+class Forecaster(Protocol):
+    """Continues prefixes with suffixes."""
+
+    def draw(
+        self, prefixes: Sequence[tuple[str, ...]], *, num_draws: int, max_steps: int
+    ) -> list[list[tuple[str, ...]]]:
+        """Draw `num_draws` suffixes per prefix, each at most `max_steps` activities.
+
+        Args:
+            prefixes: The activities of every prefix.
+            num_draws: The number of suffixes drawn for each prefix.
+            max_steps: The most activities a suffix holds.
+
+        Returns:
+            list[list[tuple[str, ...]]]: The activities of every suffix drawn, `num_draws` per
+                prefix, in the order of `prefixes`.
+        """
+        ...
+
+
+def write_forecasts(
+    forecaster: Forecaster,
     *,
     test: Sequence[Case],
     path: Path,
@@ -18,7 +38,7 @@ def write_decoding(
     """Draw suffixes for every prefix of the test cases and save them to `path`.
 
     Args:
-        decoder: The decoder the suffixes are drawn from.
+        forecaster: The forecaster the suffixes are drawn from.
         test: The test cases, each with the lengths of its scored prefixes.
         path: The Parquet file the forecasts are written to.
         num_draws: The number of suffixes drawn for each prefix.
@@ -37,7 +57,7 @@ def write_decoding(
     with ForecastWriter(path) as writer:
         for start in range(0, len(prefixes), batch_size):
             batch = prefixes[start : start + batch_size]
-            draws = decoder.draw(
+            draws = forecaster.draw(
                 [case.prefix(length) for case, length in batch],
                 num_draws=num_draws,
                 max_steps=max_steps,
