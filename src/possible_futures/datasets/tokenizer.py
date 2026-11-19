@@ -78,21 +78,31 @@ class Tokenizer:
         )
 
     def save(self, path: Path) -> None:
-        """Write the activities to a JSON file.
+        """Write the token of every label, special tokens included, to a JSON file.
 
         Args:
             path: The JSON file written.
         """
-        path.write_text(json.dumps({'activities': list(self.activities)}, indent=2) + '\n')
+        path.write_text(json.dumps({'tokens': self._tokens}, indent=2) + '\n')
 
     @classmethod
     def load(cls, path: Path) -> Self:
-        """Read the activities from a JSON file.
+        """Read the token of every label from a JSON file written by `save`.
 
         Args:
             path: The JSON file read.
 
         Returns:
             Tokenizer: The tokenizer of the activities read.
+
+        Raises:
+            ValueError: If the file maps the labels to tokens differently from this tokenizer,
+                such as after a change to the special tokens.
         """
-        return cls(activities=tuple(json.loads(path.read_text())['activities']))
+        tokens = json.loads(path.read_text())['tokens']
+        specials = {token.label for token in SpecialToken}
+        labels = sorted(tokens, key=tokens.get)
+        tokenizer = cls(activities=tuple(label for label in labels if label not in specials))
+        if tokenizer._tokens != tokens:
+            raise ValueError(f'{path} does not map the labels to the tokens this tokenizer uses')
+        return tokenizer

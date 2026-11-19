@@ -8,13 +8,12 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
 from possible_futures.cases import Case, load_cases
-from possible_futures.datasets.tokenizer import Tokenizer
 from possible_futures.inference.decode import write_decoding
 from possible_futures.models.decoder import Decoder
 from possible_futures.models.markov import MarkovChain
 from possible_futures.models.process import GreedyDecoder, SamplingDecoder
 from possible_futures.models.synthetic import SyntheticProcess
-from possible_futures.models.u_ed_lstm import UEDLSTM, UEDLSTMDecoder
+from possible_futures.models.u_ed_lstm import UEDLSTMDecoder
 from possible_futures.models.unconditional import UnconditionalDecoder
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
@@ -23,7 +22,6 @@ from possible_futures.runs.paths import (
     decoding_file,
     model_dir,
     split_file,
-    tokenizer_file,
 )
 
 
@@ -110,11 +108,7 @@ def build_decoder(
     """The decoder `config` asks for, built from the train split where it needs one."""
     match config.model, config.strategy:
         case DecoderModel.U_ED_LSTM, Strategy.SAMPLED:
-            return UEDLSTMDecoder(
-                model=UEDLSTM.load(model_dir(data.name), device=device),
-                tokenizer=Tokenizer.load(tokenizer_file(data.name)),
-                device=device,
-            )
+            return UEDLSTMDecoder.load(model_dir(data.name), device=device)
         case DecoderModel.UNCONDITIONAL, Strategy.SAMPLED:
             return UnconditionalDecoder.fit(train, rng=rng)
         case DecoderModel.ORACLE | DecoderModel.MARKOV, strategy:

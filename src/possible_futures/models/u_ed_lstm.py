@@ -18,6 +18,7 @@ from possible_futures.models.lstm import GateDropoutStack, GateMasks, LSTMState
 
 _WEIGHTS_FILE = 'model.safetensors'
 _ARGUMENTS_FILE = 'arguments.json'
+_TOKENIZER_FILE = 'tokenizer.json'
 
 
 def embedding_dim(num_classes: int) -> int:
@@ -336,6 +337,32 @@ class UEDLSTMDecoder(Decoder):
     model: UEDLSTM
     tokenizer: Tokenizer  # the tokenizer the model was trained on
     device: torch.device  # the device of the model
+
+    def save(self, directory: Path) -> None:
+        """Write the model and the tokenizer it was trained with.
+
+        Args:
+            directory: The directory written into. Created if it does not exist.
+        """
+        self.model.save(directory)
+        self.tokenizer.save(directory / _TOKENIZER_FILE)
+
+    @classmethod
+    def load(cls, directory: Path, *, device: torch.device) -> Self:
+        """Rebuild a decoder written by `save`.
+
+        Args:
+            directory: The directory `save` wrote into.
+            device: The device the model is loaded onto.
+
+        Returns:
+            UEDLSTMDecoder: The model in evaluation mode, on `device`, with its tokenizer.
+        """
+        return cls(
+            model=UEDLSTM.load(directory, device=device),
+            tokenizer=Tokenizer.load(directory / _TOKENIZER_FILE),
+            device=device,
+        )
 
     def draw(
         self, prefixes: Sequence[tuple[str, ...]], *, num_draws: int, max_steps: int
