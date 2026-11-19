@@ -1,44 +1,47 @@
 from collections import Counter
 from collections.abc import Sequence
 
-from possible_futures.distances import Distance, activity_ids
+from possible_futures.datasets.vocabulary import Vocabulary
+from possible_futures.distances import Distance
 from possible_futures.inference.decoding import Forecast
 
 
-def medoid_index(draws: Sequence[tuple[str, ...]], *, distance: Distance) -> int:
+def medoid_index(draws: Sequence[tuple[int, ...]], *, distance: Distance) -> int:
     """The index of the draw with the lowest mean distance to all draws, ties going to the
     lowest in tuple order.
 
     Args:
-        draws: The activities of every draw.
+        draws: The tokens of every draw.
         distance: The distance the mean is taken under.
 
     Returns:
         int: The index of the first occurrence of the medoid in `draws`.
     """
-    (ids,) = activity_ids(draws)
-    counts = Counter(ids)
+    counts = Counter(draws)
     unique = sorted(counts)
     weights = [counts[suffix] for suffix in unique]
     totals = distance(left=unique, right=unique) @ weights  # [U, U] @ [U] -> [U]
-    return ids.index(unique[totals.argmin()])
+    return draws.index(unique[totals.argmin()])
 
 
-def medoids(forecasts: Sequence[Forecast], *, distance: Distance) -> list[Forecast]:
+def medoids(
+    forecasts: Sequence[Forecast], *, vocabulary: Vocabulary, distance: Distance
+) -> list[Forecast]:
     """Keep only the medoid of the draws of every forecast.
 
     Args:
         forecasts: The forecasts collapsed.
+        vocabulary: Maps the activities of the draws to tokens.
         distance: The distance the medoid is taken under.
 
     Returns:
         list[Forecast]: One forecast per forecast of `forecasts`, holding only its medoid.
     """
-    return [
-        Forecast(
-            case_id=forecast.case_id,
-            prefix_length=forecast.prefix_length,
-            draws=[forecast.draws[medoid_index(forecast.draws, distance=distance)]],
+    collapsed = []
+    for forecast in forecasts:
+        tokens = [tuple(vocabulary.encode(draw).tolist()) for draw in forecast.draws]
+        medoid = forecast.draws[medoid_index(tokens, distance=distance)]
+        collapsed.append(
+            Forecast(case_id=forecast.case_id, prefix_length=forecast.prefix_length, draws=[medoid])
         )
-        for forecast in forecasts
-    ]
+    return collapsed

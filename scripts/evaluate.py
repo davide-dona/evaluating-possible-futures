@@ -7,6 +7,7 @@ from hydra.utils import instantiate
 from omegaconf import MISSING
 
 from possible_futures.cases import load_cases
+from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.evaluation.scoring import mean_scores, save_scores
 from possible_futures.inference.decoding import load_decoding
 from possible_futures.runs.configs import DataConfig
@@ -16,6 +17,7 @@ from possible_futures.runs.paths import (
     decoding_file,
     scores_file,
     split_file,
+    vocabulary_file,
 )
 
 
@@ -55,6 +57,7 @@ def main(config: EvaluateConfig) -> None:
         means = mean_scores(
             load_decoding(path),
             test=load_cases(split_file(name, Split.TEST)),
+            vocabulary=Vocabulary.load(vocabulary_file(name)),
             metrics=metrics,
             workers=config.workers,
         )

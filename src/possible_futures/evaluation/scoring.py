@@ -8,7 +8,7 @@ import numpy as np
 import torch
 
 from possible_futures.cases import Case
-from possible_futures.distances import activity_ids
+from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.evaluation.metrics import Metric
 from possible_futures.inference.decoding import Forecast
 
@@ -17,6 +17,7 @@ def mean_scores(
     forecasts: Sequence[Forecast],
     *,
     test: Sequence[Case],
+    vocabulary: Vocabulary,
     metrics: Sequence[Metric],
     workers: int,
 ) -> dict[str, float]:
@@ -25,6 +26,7 @@ def mean_scores(
     Args:
         forecasts: The forecasts of the decoding scored.
         test: The test cases, whose suffixes the forecasts are scored against.
+        vocabulary: Maps the activities of the draws and of the test cases to tokens.
         metrics: The metrics. Each must pickle, to reach the worker processes.
         workers: Processes scoring the forecasts in parallel.
 
@@ -37,7 +39,7 @@ def mean_scores(
     draws = [forecast.draws for forecast in forecasts]
     observed = [cases[forecast.case_id].suffix(forecast.prefix_length) for forecast in forecasts]
     chunksize = max(1, len(forecasts) // (16 * workers))
-    score = partial(_scores, metrics=metrics)
+    score = partial(_scores, vocabulary=vocabulary, metrics=metrics)
     # One torch thread per process, so the processes do not oversubscribe the cores.
     with ProcessPoolExecutor(
         max_workers=workers, initializer=torch.set_num_threads, initargs=(1,)
@@ -48,20 +50,26 @@ def mean_scores(
 
 
 def _scores(
-    draws: Sequence[tuple[str, ...]], observed: tuple[str, ...], *, metrics: Sequence[Metric]
+    draws: Sequence[tuple[str, ...]],
+    observed: tuple[str, ...],
+    *,
+    vocabulary: Vocabulary,
+    metrics: Sequence[Metric],
 ) -> list[float]:
     """Score the draws of one prefix against its observed suffix under every metric.
 
     Args:
         draws: The activities of every draw.
         observed: The activities of the observed suffix.
+        vocabulary: Maps the activities to tokens.
         metrics: The metrics.
 
     Returns:
         list[float]: The score under every metric, in the order of `metrics`.
     """
-    draw_ids, (observed_ids,) = activity_ids(draws, [observed])
-    return [metric(draws=draw_ids, observed=observed_ids) for metric in metrics]
+    draw_tokens = [tuple(vocabulary.encode(draw).tolist()) for draw in draws]
+    observed_tokens = tuple(vocabulary.encode(observed).tolist())
+    return [metric(draws=draw_tokens, observed=observed_tokens) for metric in metrics]
 
 
 def save_scores(means: Mapping[str, float], path: Path) -> None:
