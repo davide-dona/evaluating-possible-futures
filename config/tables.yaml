@@ -19,7 +19,7 @@ datasets:
 # follow the order of the forecasts within each.
 scores:
   real:
-    datasets: [sepsis, bpic12, bpic17, bpic19]
+    datasets: [sepsis, bpic12, bpic17, bpic19, synthetic]
     forecasts: [sampled, medoid, unconditional]
   synthetic:
     datasets: [synthetic]
