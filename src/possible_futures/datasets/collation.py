@@ -48,7 +48,7 @@ class PrefixSuffixBatch(NamedTuple):
     """Some prefixes and the suffixes following them."""
 
     prefixes: PrefixTokens
-    suffixes: torch.Tensor  # int64, PAD past each one's end, [B, S]
+    suffixes: torch.Tensor  # int64, PAD past each one's end, [B, L]
 
     @classmethod
     def collate(cls, items: Sequence[PrefixSuffix]) -> Self:
@@ -77,6 +77,6 @@ class PrefixSuffixBatch(NamedTuple):
         Returns:
             torch.Tensor: int64 `[B, width]`.
         """
-        suffixes = self.suffixes[:, :width]  # [B, S] -> [B, min(S, width)]
+        suffixes = self.suffixes[:, :width]  # [B, L] -> [B, min(L, width)]
         targets = suffixes.masked_fill(suffixes == SpecialToken.PAD, SpecialToken.EOS)
         return F.pad(targets, pad=(0, width - targets.shape[1]), value=SpecialToken.EOS)

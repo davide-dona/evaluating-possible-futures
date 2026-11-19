@@ -3,6 +3,10 @@ defaults:
 - output/default
 - dataset: ???
 - _self_
+# The name of the decoding collapsed, the stem of its file.
+decoding: sampled
+# The name of the collapsed decoding, the stem of its file.
+name: medoid
 # The distance the medoid of the draws of a prefix is taken under.
 distance:
   _target_: possible_futures.distances.NormalizedDamerauLevenshtein

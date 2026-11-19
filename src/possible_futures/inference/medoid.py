@@ -7,7 +7,15 @@ from possible_futures.inference.decoding import Forecast
 
 def medoid_index(draws: Sequence[tuple[str, ...]], *, distance: Distance) -> int:
     """The index of the draw with the lowest mean distance to all draws, ties going to the
-    lowest in tuple order."""
+    lowest in tuple order.
+
+    Args:
+        draws: The activities of every draw.
+        distance: The distance the mean is taken under.
+
+    Returns:
+        int: The index of the first occurrence of the medoid in `draws`.
+    """
     (ids,) = activity_ids(draws)
     counts = Counter(ids)
     unique = sorted(counts)

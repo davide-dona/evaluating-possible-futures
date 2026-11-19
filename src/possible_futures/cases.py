@@ -68,22 +68,50 @@ class Case:
 
 
 def num_variants(cases: Sequence[Case]) -> int:
-    """The number of distinct variants within the cases."""
+    """The number of distinct variants within the cases.
+
+    Args:
+        cases: The cases counted.
+
+    Returns:
+        int: The number of distinct variants.
+    """
     return len({case.activities for case in cases})
 
 
 def num_events(cases: Sequence[Case]) -> int:
-    """The number of events within the cases."""
+    """The number of events within the cases.
+
+    Args:
+        cases: The cases counted.
+
+    Returns:
+        int: The number of events.
+    """
     return sum(len(case) for case in cases)
 
 
 def num_activities(cases: Sequence[Case]) -> int:
-    """The number of distinct activities within the cases."""
+    """The number of distinct activities within the cases.
+
+    Args:
+        cases: The cases counted.
+
+    Returns:
+        int: The number of distinct activities.
+    """
     return len({activity for case in cases for activity in case.activities})
 
 
 def num_prefixes(cases: Sequence[Case]) -> int:
-    """The number of prefixes taken from the cases."""
+    """The number of prefixes taken from the cases.
+
+    Args:
+        cases: The cases counted.
+
+    Returns:
+        int: The number of prefixes.
+    """
     return sum(len(case.prefix_lengths) for case in cases)
 
 

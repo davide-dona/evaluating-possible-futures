@@ -10,12 +10,16 @@ from possible_futures.inference.decoding import load_decoding, save_decoding
 from possible_futures.inference.medoid import medoids
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
-from possible_futures.runs.paths import decoding_file, sampled_file
+from possible_futures.runs.paths import decoding_file
 
 
 @dataclass
 class CollapseConfig:
     data: DataConfig = MISSING
+    # The name of the decoding collapsed, the stem of its file.
+    decoding: str = MISSING
+    # The name of the collapsed decoding, the stem of its file.
+    name: str = MISSING
     # The `Distance` the medoid is taken under, built with `hydra.utils.instantiate`.
     distance: Any = MISSING
 
@@ -27,19 +31,19 @@ ConfigStore.instance().store(name='collapse_schema', node=CollapseConfig)
 def main(config: CollapseConfig) -> None:
     """Keep only the medoid of the sampled suffixes of every test prefix."""
     name = config.data.name
-    sampled = sampled_file(name)
-    path = decoding_file(name, 'medoid')
+    source = decoding_file(name, config.decoding)
+    path = decoding_file(name, config.name)
     distance = instantiate(config.distance)
     banner(
-        f'Collapsing the sampled suffixes of "{name}"',
+        f'Collapsing the {config.decoding} suffixes of "{name}"',
         {
-            'sampled': sampled,
+            'decoding': source,
             'distance': type(distance).__name__,
-            'medoid': f'1 draw per prefix, written to {path}',
+            config.name: f'1 draw per prefix, written to {path}',
         },
     )
     with step('Taking the medoid of every prefix'):
-        collapsed = medoids(load_decoding(sampled), distance=distance)
+        collapsed = medoids(load_decoding(source), distance=distance)
         save_decoding(collapsed, path)
         print(f'  {len(collapsed):,} prefixes', flush=True)
 

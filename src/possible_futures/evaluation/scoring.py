@@ -50,6 +50,16 @@ def mean_scores(
 def _scores(
     draws: Sequence[tuple[str, ...]], observed: tuple[str, ...], *, metrics: Sequence[Metric]
 ) -> list[float]:
+    """Score the draws of one prefix against its observed suffix under every metric.
+
+    Args:
+        draws: The activities of every draw.
+        observed: The activities of the observed suffix.
+        metrics: The metrics.
+
+    Returns:
+        list[float]: The score under every metric, in the order of `metrics`.
+    """
     draw_ids, (observed_ids,) = activity_ids(draws, [observed])
     return [metric(draws=draw_ids, observed=observed_ids) for metric in metrics]
 

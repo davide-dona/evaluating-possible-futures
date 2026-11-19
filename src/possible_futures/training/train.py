@@ -40,7 +40,7 @@ def train(
     model: UEDLSTM,
     optimizer: torch.optim.Optimizer,
     *,
-    pairs: PrefixSuffixDataset,
+    dataset: PrefixSuffixDataset,
     epochs: int,
     batch_size: int,
     target_length: int,
@@ -56,15 +56,18 @@ def train(
     Args:
         model: The model, on `device`.
         optimizer: Steps the parameters of `model`.
-        pairs: The train prefixes and their suffixes, shuffled anew every epoch.
+        dataset: The train prefixes and their suffixes, shuffled anew every epoch.
         batch_size: The number of prefixes in a batch.
         target_length: The number of events following each prefix that label it.
         weight_penalty: Weight of the sum of squared parameters in the loss.
         rng: Flips the teacher forcing coins.
         generator: Shuffles the prefixes.
+
+    Returns:
+        Iterator[EpochRecord]: The record of every epoch, as it ends.
     """
     batches = DataLoader(
-        pairs,
+        dataset,
         batch_size=batch_size,
         shuffle=True,
         collate_fn=PrefixSuffixBatch.collate,

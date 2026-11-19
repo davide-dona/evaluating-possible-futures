@@ -63,7 +63,14 @@ class Vocabulary:
         return tuple(token.label for token in SpecialToken) + self.activities
 
     def encode(self, activities: Iterable[str]) -> np.ndarray:
-        """Map activities to tokens, UNK for an activity the train split does not hold."""
+        """Map activities to tokens, UNK for an activity the train split does not hold.
+
+        Args:
+            activities: The activities mapped.
+
+        Returns:
+            np.ndarray: The int64 token of every activity.
+        """
         return np.fromiter(
             (self._tokens.get(activity, SpecialToken.UNK) for activity in activities),
             dtype=np.int64,

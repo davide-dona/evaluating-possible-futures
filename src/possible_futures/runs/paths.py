@@ -46,10 +46,5 @@ def decoding_file(dataset: str, decoding: str) -> Path:
     return stage_dir(dataset, Stage.DECODE) / f'{decoding}.parquet'
 
 
-def sampled_file(dataset: str) -> Path:
-    """The decoding the trained model samples."""
-    return decoding_file(dataset, 'sampled')
-
-
 def scores_file(dataset: str, decoding: str) -> Path:
     return stage_dir(dataset, Stage.EVALUATE) / f'{decoding}.json'

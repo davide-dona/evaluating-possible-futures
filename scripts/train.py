@@ -71,7 +71,7 @@ def main(config: TrainConfig) -> None:
     )
     with step('Loading the train prefixes'):
         vocabulary = Vocabulary.load(vocabulary_file(name))
-        pairs = PrefixSuffixDataset(
+        dataset = PrefixSuffixDataset(
             load_cases(split_file(name, Split.TRAIN)), vocabulary=vocabulary
         )
 
@@ -83,7 +83,7 @@ def main(config: TrainConfig) -> None:
     for record in train(
         model,
         optimizer,
-        pairs=pairs,
+        dataset=dataset,
         epochs=training.epochs,
         batch_size=training.batch_size,
         target_length=training.target_length,

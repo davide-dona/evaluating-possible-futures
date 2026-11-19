@@ -15,20 +15,42 @@ class Process(ABC):
 
     @abstractmethod
     def next_activity_probabilities(self, prefix: tuple[str, ...]) -> dict[str, float]:
-        """The probability of every activity, or of `END`, right after `prefix`."""
+        """The probability of every activity, or of `END`, right after `prefix`.
+
+        Args:
+            prefix: The activities so far.
+
+        Returns:
+            dict[str, float]: The probability of every activity that can follow, keyed by it.
+        """
 
     def sample_suffix(
         self, prefix: tuple[str, ...], *, rng: np.random.Generator, max_steps: int
     ) -> tuple[str, ...]:
-        """Draw the activities following `prefix` one at a time until `END`, at most
-        `max_steps` of them."""
+        """Draw the activities following `prefix` one at a time until `END`.
+
+        Args:
+            prefix: The activities the suffix follows.
+            rng: Draws every activity.
+            max_steps: The most activities the suffix holds.
+
+        Returns:
+            tuple[str, ...]: The activities of the suffix.
+        """
         return self._decode(
             prefix, pick=lambda options: _choose(options, rng=rng), max_steps=max_steps
         )
 
     def greedy_suffix(self, prefix: tuple[str, ...], *, max_steps: int) -> tuple[str, ...]:
-        """Take the most probable activity following the prefix at every step, until `END`,
-        at most `max_steps` of them."""
+        """Take the most probable activity following the prefix at every step, until `END`.
+
+        Args:
+            prefix: The activities the suffix follows.
+            max_steps: The most activities the suffix holds.
+
+        Returns:
+            tuple[str, ...]: The activities of the suffix.
+        """
         return self._decode(
             prefix, pick=lambda options: max(options, key=options.get), max_steps=max_steps
         )
