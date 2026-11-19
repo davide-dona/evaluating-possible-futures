@@ -10,7 +10,7 @@ import torch
 from possible_futures.cases import Case
 from possible_futures.datasets.tokenizer import Tokenizer
 from possible_futures.evaluation.metrics import Metric
-from possible_futures.inference.decoding import Forecast
+from possible_futures.forecasts import Forecast
 
 
 def mean_scores(
@@ -21,10 +21,10 @@ def mean_scores(
     metrics: Sequence[Metric],
     workers: int,
 ) -> dict[str, float]:
-    """Score every forecast of a decoding against its observed suffix and average the scores.
+    """Score every forecast against its observed suffix and average the scores.
 
     Args:
-        forecasts: The forecasts of the decoding scored.
+        forecasts: The forecasts scored.
         test: The test cases, whose suffixes the forecasts are scored against.
         tokenizer: Maps the activities of the draws and of the test cases to tokens.
         metrics: The metrics. Each must pickle, to reach the worker processes.
@@ -34,7 +34,6 @@ def mean_scores(
         dict[str, float]: The mean score of the forecasts under every metric, keyed by its
             name.
     """
-    cases = {case.case_id: case for case in test}
     cases = {case.case_id: case for case in test}
     draws = [forecast.draws for forecast in forecasts]
     observed = [cases[forecast.case_id].suffix(forecast.prefix_length) for forecast in forecasts]
@@ -73,10 +72,10 @@ def _scores(
 
 
 def save_scores(means: Mapping[str, float], path: Path) -> None:
-    """Write the mean scores of one decoding as JSON.
+    """Write the mean scores of one set of forecasts as JSON.
 
     Args:
-        means: The mean score of the decoding under every metric, keyed by metric name.
+        means: The mean score of the forecasts under every metric, keyed by metric name.
         path: The JSON file written. Creates the parent directories if they do not exist.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -84,13 +83,13 @@ def save_scores(means: Mapping[str, float], path: Path) -> None:
 
 
 def load_scores(path: Path) -> dict[str, float]:
-    """Read the mean scores of one decoding from a JSON file.
+    """Read the mean scores of one set of forecasts from a JSON file.
 
     Args:
         path: The JSON file read.
 
     Returns:
-        dict[str, float]: The mean score of the decoding under every metric, keyed by metric
+        dict[str, float]: The mean score of the forecasts under every metric, keyed by metric
             name.
     """
     return json.loads(path.read_text())

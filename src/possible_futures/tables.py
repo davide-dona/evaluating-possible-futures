@@ -21,15 +21,15 @@ class MetricColumn:
 def scores_table(
     means: Mapping[str, pd.DataFrame],
     *,
-    decodings: Mapping[str, str],
+    forecasts: Mapping[str, str],
     metrics: Mapping[str, MetricColumn],
 ) -> str:
     """A booktabs `tabular` of the mean scores of every dataset.
 
     Args:
-        means: The mean scores of every decoding, one row each, for every dataset, keyed by the
-            name the table prints. A table of a single dataset has no dataset column.
-        decodings: The macro of every decoding, in the order of the rows.
+        means: The mean scores of every set of forecasts, one row each, for every dataset, keyed
+            by the name the table prints. A table of a single dataset has no dataset column.
+        forecasts: The macro of every set of forecasts, in the order of the rows.
         metrics: The column of every metric, keyed by its name in `means`, in the order of
             the columns.
 
@@ -47,7 +47,7 @@ def scores_table(
         ' & '.join(headers) + r' \\',
     ]
     for index, (dataset, scores) in enumerate(means.items()):
-        cells = scores.loc[list(decodings), list(metrics)].round(DECIMALS)
+        cells = scores.loc[list(forecasts), list(metrics)].round(DECIMALS)
         best = {
             metric: cells[metric].max() if column.higher_is_better else cells[metric].min()
             for metric, column in metrics.items()
@@ -55,7 +55,7 @@ def scores_table(
         lines.append(r'\addlinespace' if index else r'\midrule')
         if grouped:
             lines.append(rf'\multirow{{{len(cells)}}}{{*}}{{{dataset}}}')
-        for decoding, values in cells.iterrows():
+        for name, values in cells.iterrows():
             numbers = [
                 rf'\bfseries {value:.{DECIMALS}f}'
                 if value == best[metric]
@@ -63,7 +63,7 @@ def scores_table(
                 for metric, value in values.items()
             ]
             group = [''] if grouped else []
-            lines.append(' & '.join([*group, decodings[decoding], *numbers]) + r' \\')
+            lines.append(' & '.join([*group, forecasts[name], *numbers]) + r' \\')
     lines += [r'\bottomrule', r'\end{tabular}', '']
     return '\n'.join(lines)
 

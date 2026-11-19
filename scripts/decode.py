@@ -19,7 +19,7 @@ from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import (
     Split,
-    decoding_file,
+    forecasts_file,
     model_dir,
     split_file,
 )
@@ -67,7 +67,7 @@ def main(config: DecodeConfig) -> None:
     rng = np.random.default_rng(config.seed)
     device = torch.device(config.device)
     name, decoder_config = config.data.name, config.decoder
-    path = decoding_file(name, decoder_config.name)
+    path = forecasts_file(name, decoder_config.name)
     banner(
         f'Decoding "{name}" as {decoder_config.name}',
         {

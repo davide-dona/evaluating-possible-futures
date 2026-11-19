@@ -42,9 +42,9 @@ def model_dir(dataset: str) -> Path:
     return stage_dir(dataset, Stage.TRAIN)
 
 
-def decoding_file(dataset: str, decoding: str) -> Path:
-    return stage_dir(dataset, Stage.DECODE) / f'{decoding}.parquet'
+def forecasts_file(dataset: str, forecasts: str) -> Path:
+    return stage_dir(dataset, Stage.DECODE) / f'{forecasts}.parquet'
 
 
-def scores_file(dataset: str, decoding: str) -> Path:
-    return stage_dir(dataset, Stage.EVALUATE) / f'{decoding}.json'
+def scores_file(dataset: str, forecasts: str) -> Path:
+    return stage_dir(dataset, Stage.EVALUATE) / f'{forecasts}.json'

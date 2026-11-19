@@ -15,19 +15,19 @@ datasets:
   bpic17: BPIC17
   bpic19: BPIC19
   synthetic: Synthetic
-# The datasets and the decodings of every table of scores. Its rows are grouped by dataset and
-# follow the order of the decodings within each.
+# The datasets and the forecasts of every table of scores. Its rows are grouped by dataset and
+# follow the order of the forecasts within each.
 scores:
   real:
     datasets: [sepsis, bpic12, bpic17, bpic19]
-    decodings: [sampled, medoid, unconditional]
+    forecasts: [sampled, medoid, unconditional]
   synthetic:
     datasets: [synthetic]
-    decodings: [oracle_sampled, oracle_greedy, markov_sampled, markov_greedy]
+    forecasts: [oracle_sampled, oracle_greedy, markov_sampled, markov_greedy]
 # The rows of the table of the properties of the preprocessed logs, in this order.
 properties: [sepsis, bpic12, bpic17, bpic19, synthetic]
-# The LaTeX macro that prints every decoding.
-decodings:
+# The LaTeX macro that prints every set of forecasts.
+forecasts:
   sampled: \Sampled
   medoid: \Medoid
   unconditional: \Unconditional

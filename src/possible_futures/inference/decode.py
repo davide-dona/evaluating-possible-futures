@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from possible_futures.cases import Case
-from possible_futures.inference.decoding import DecodingWriter, Forecast
+from possible_futures.forecasts import Forecast, ForecastWriter
 from possible_futures.models.decoder import Decoder
 
 
@@ -34,7 +34,7 @@ def write_decoding(
         key=lambda prefix: prefix[1],
     )
     batch_size = max(1, max_rows // num_draws)
-    with DecodingWriter(path) as writer:
+    with ForecastWriter(path) as writer:
         for start in range(0, len(prefixes), batch_size):
             batch = prefixes[start : start + batch_size]
             draws = decoder.draw(

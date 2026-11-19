@@ -16,7 +16,7 @@ from possible_futures.tables import MetricColumn, properties_table, scores_table
 @dataclass
 class ScoresTableConfig:
     datasets: list[str] = MISSING
-    decodings: list[str] = MISSING
+    forecasts: list[str] = MISSING
 
 
 @dataclass
@@ -30,7 +30,7 @@ class TablesConfig:
     datasets: dict[str, str] = MISSING
     scores: dict[str, ScoresTableConfig] = MISSING
     properties: list[str] = MISSING
-    decodings: dict[str, str] = MISSING
+    forecasts: dict[str, str] = MISSING
     metrics: dict[str, MetricColumnConfig] = MISSING
 
 
@@ -57,15 +57,15 @@ def main(config: TablesConfig) -> None:
             means = {
                 config.datasets[dataset]: pd.DataFrame.from_dict(
                     {
-                        decoding: load_scores(scores_file(dataset, decoding))
-                        for decoding in table.decodings
+                        forecasts: load_scores(scores_file(dataset, forecasts))
+                        for forecasts in table.forecasts
                     },
                     orient='index',
                 )
                 for dataset in table.datasets
             }
-            decodings = {decoding: config.decodings[decoding] for decoding in table.decodings}
-            path.write_text(scores_table(means, decodings=decodings, metrics=metrics))
+            macros = {forecasts: config.forecasts[forecasts] for forecasts in table.forecasts}
+            path.write_text(scores_table(means, forecasts=macros, metrics=metrics))
     path = output / 'properties.tex'
     with step(f'Writing {path}'):
         splits = {

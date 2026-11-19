@@ -1,9 +1,10 @@
 from collections import Counter
 from collections.abc import Sequence
+from dataclasses import replace
 
 from possible_futures.datasets.tokenizer import Tokenizer
 from possible_futures.distances import Distance
-from possible_futures.inference.decoding import Forecast
+from possible_futures.forecasts import Forecast
 
 
 def medoid_index(draws: Sequence[tuple[int, ...]], *, distance: Distance) -> int:
@@ -41,7 +42,5 @@ def medoids(
     for forecast in forecasts:
         tokens = [tuple(tokenizer.encode(draw).tolist()) for draw in forecast.draws]
         medoid = forecast.draws[medoid_index(tokens, distance=distance)]
-        collapsed.append(
-            Forecast(case_id=forecast.case_id, prefix_length=forecast.prefix_length, draws=[medoid])
-        )
+        collapsed.append(replace(forecast, draws=[medoid]))
     return collapsed

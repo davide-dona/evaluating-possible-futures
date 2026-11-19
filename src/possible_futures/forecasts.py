@@ -11,7 +11,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 # One row per draw, the draws of a prefix on consecutive rows and numbered from 0.
-DECODING_SCHEMA = pa.schema(
+FORECASTS_SCHEMA = pa.schema(
     [
         ('case_id', pa.string()),
         ('prefix_length', pa.int32()),
@@ -30,8 +30,8 @@ class Forecast:
     draws: list[tuple[str, ...]]  # the activities of every drawn suffix
 
 
-def save_decoding(forecasts: Sequence[Forecast], path: Path) -> None:
-    """Write the forecasts of a decoding to a Parquet file.
+def save_forecasts(forecasts: Sequence[Forecast], path: Path) -> None:
+    """Write forecasts to a Parquet file.
 
     Args:
         forecasts: The forecasts written.
@@ -41,8 +41,8 @@ def save_decoding(forecasts: Sequence[Forecast], path: Path) -> None:
     pq.write_table(_table(forecasts), path)
 
 
-def load_decoding(path: Path) -> list[Forecast]:
-    """Read the forecasts of a decoding from a Parquet file.
+def load_forecasts(path: Path) -> list[Forecast]:
+    """Read forecasts from a Parquet file.
 
     Args:
         path: The Parquet file read.
@@ -50,7 +50,7 @@ def load_decoding(path: Path) -> list[Forecast]:
     Returns:
         list[Forecast]: The forecasts, in the order they were written.
     """
-    table = pq.read_table(path, columns=DECODING_SCHEMA.names)
+    table = pq.read_table(path, columns=FORECASTS_SCHEMA.names)
     table = table.unify_dictionaries().combine_chunks()
     activities = table['activities'].chunk(0)
     labels = np.array(activities.values.dictionary.to_pylist(), dtype=object)
@@ -69,9 +69,8 @@ def load_decoding(path: Path) -> list[Forecast]:
     ]
 
 
-class DecodingWriter:
-    """Writes the forecasts of a decoding to a Parquet file a few at a time, so no forecast
-    outlives its write."""
+class ForecastWriter:
+    """Writes forecasts to a Parquet file a few at a time, so no forecast outlives its write."""
 
     def __init__(self, path: Path) -> None:
         """
@@ -82,7 +81,7 @@ class DecodingWriter:
 
     def __enter__(self) -> Self:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._writer = pq.ParquetWriter(self.path, schema=DECODING_SCHEMA)
+        self._writer = pq.ParquetWriter(self.path, schema=FORECASTS_SCHEMA)
         return self
 
     def __exit__(
@@ -103,7 +102,7 @@ class DecodingWriter:
 
 
 def _table(forecasts: Sequence[Forecast]) -> pa.Table:
-    """The rows of `DECODING_SCHEMA` of the forecasts, one per draw.
+    """The rows of `FORECASTS_SCHEMA` of the forecasts, one per draw.
 
     Args:
         forecasts: The forecasts.
@@ -120,7 +119,7 @@ def _table(forecasts: Sequence[Forecast]) -> pa.Table:
         'draw': [number for forecast in forecasts for number in range(len(forecast.draws))],
         'activities': pa.ListArray.from_arrays(
             offsets=pa.array(offsets),
-            values=activities.cast(DECODING_SCHEMA.field('activities').type.value_type),
+            values=activities.cast(FORECASTS_SCHEMA.field('activities').type.value_type),
         ),
     }
-    return pa.table(columns, schema=DECODING_SCHEMA)
+    return pa.table(columns, schema=FORECASTS_SCHEMA)

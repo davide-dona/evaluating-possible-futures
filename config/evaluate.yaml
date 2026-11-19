@@ -3,11 +3,11 @@ defaults:
 - output/default
 - dataset: ???
 - _self_
-# The name of the decoding scored, the stem of its file.
-decoding: ???
+# The name of the forecasts scored, the stem of their file.
+forecasts: ???
 # Processes scoring the prefixes in parallel.
 workers: 8
-# The metrics the decoding is scored with, each named as its mean score in the scores file.
+# The metrics the forecasts are scored with, each named as its mean score in the scores file.
 metrics:
 - _target_: possible_futures.evaluation.metrics.MeanDLSimilarity
   name: DLS
@@ -21,6 +21,6 @@ metrics:
   name: ES bigram
   distance: {_target_: possible_futures.distances.Bigram}
 hydra:
-  # The scores of a dataset's decodings share the stage directory, so each keeps its own Hydra
+  # The scores of a dataset's forecasts share the stage directory, so each keeps its own Hydra
   # record.
-  output_subdir: .hydra/${decoding}
+  output_subdir: .hydra/${forecasts}

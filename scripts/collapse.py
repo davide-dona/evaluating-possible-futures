@@ -7,19 +7,19 @@ from hydra.utils import instantiate
 from omegaconf import MISSING
 
 from possible_futures.datasets.tokenizer import Tokenizer
-from possible_futures.inference.decoding import load_decoding, save_decoding
-from possible_futures.inference.medoid import medoids
+from possible_futures.forecasts import load_forecasts, save_forecasts
+from possible_futures.medoid import medoids
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
-from possible_futures.runs.paths import decoding_file, tokenizer_file
+from possible_futures.runs.paths import forecasts_file, tokenizer_file
 
 
 @dataclass
 class CollapseConfig:
     data: DataConfig = MISSING
-    # The name of the decoding collapsed, the stem of its file.
-    decoding: str = MISSING
-    # The name of the collapsed decoding, the stem of its file.
+    # The name of the forecasts collapsed, the stem of their file.
+    forecasts: str = MISSING
+    # The name of the collapsed forecasts, the stem of their file.
     name: str = MISSING
     # The `Distance` the medoid is taken under, built with `hydra.utils.instantiate`.
     distance: Any = MISSING
@@ -32,24 +32,24 @@ ConfigStore.instance().store(name='collapse_schema', node=CollapseConfig)
 def main(config: CollapseConfig) -> None:
     """Keep only the medoid of the sampled suffixes of every test prefix."""
     name = config.data.name
-    source = decoding_file(name, config.decoding)
-    path = decoding_file(name, config.name)
+    source = forecasts_file(name, config.forecasts)
+    path = forecasts_file(name, config.name)
     distance = instantiate(config.distance)
     banner(
-        f'Collapsing the {config.decoding} suffixes of "{name}"',
+        f'Collapsing the {config.forecasts} suffixes of "{name}"',
         {
-            'decoding': source,
+            'forecasts': source,
             'distance': type(distance).__name__,
             config.name: f'1 draw per prefix, written to {path}',
         },
     )
     with step('Taking the medoid of every prefix'):
         collapsed = medoids(
-            load_decoding(source),
+            load_forecasts(source),
             tokenizer=Tokenizer.load(tokenizer_file(name)),
             distance=distance,
         )
-        save_decoding(collapsed, path=path)
+        save_forecasts(collapsed, path=path)
         print(f'  {len(collapsed):,} prefixes', flush=True)
 
 
