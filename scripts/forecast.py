@@ -7,13 +7,12 @@ import torch
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
-from possible_futures.cases import Case, load_cases
+from possible_futures.datasets.cases import Case, load_cases
 from possible_futures.forecasters.forecaster import Forecaster, write_forecasts
-from possible_futures.forecasters.process import GreedyForecaster, SamplingForecaster
+from possible_futures.forecasters.markov import MarkovChain
+from possible_futures.forecasters.next_activity import GreedyForecaster, SamplingForecaster
 from possible_futures.forecasters.u_ed_lstm import UEDLSTMForecaster
 from possible_futures.forecasters.unconditional import UnconditionalForecaster
-from possible_futures.processes.markov import MarkovChain
-from possible_futures.processes.synthetic import SyntheticProcess
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import (
@@ -22,6 +21,7 @@ from possible_futures.runs.paths import (
     model_dir,
     split_file,
 )
+from possible_futures.simulation.synthetic import SyntheticProcess
 
 
 class ForecasterModel(StrEnum):
@@ -146,14 +146,14 @@ def build_forecaster(
             return UnconditionalForecaster.fit(train, rng=rng)
         case ForecasterModel.ORACLE | ForecasterModel.MARKOV, strategy:
             if config.model is ForecasterModel.MARKOV:
-                process = MarkovChain.fit(train)
+                distribution = MarkovChain.fit(train)
             elif data.process is None:
                 raise ValueError(f'"{data.name}" is not simulated, so it has no oracle')
             else:
-                process = SyntheticProcess(**data.process)
+                distribution = SyntheticProcess(**data.process)
             if strategy is Strategy.SAMPLED:
-                return SamplingForecaster(process=process, rng=rng)
-            return GreedyForecaster(process=process)
+                return SamplingForecaster(distribution=distribution, rng=rng)
+            return GreedyForecaster(distribution=distribution)
     raise ValueError(f'The {config.model} forecaster has no {config.strategy} strategy')
 
 

@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from jaxtyping import Int64
 
-from possible_futures.cases import Case
+from possible_futures.datasets.cases import Case
 
 
 class SpecialToken(IntEnum):

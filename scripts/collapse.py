@@ -6,8 +6,8 @@ from hydra.core.config_store import ConfigStore
 from hydra.utils import instantiate
 from omegaconf import MISSING
 
-from possible_futures.forecasts import load_forecasts, save_forecasts
-from possible_futures.medoid import medoids
+from possible_futures.forecasters.forecasts import load_forecasts, save_forecasts
+from possible_futures.forecasters.medoid import medoids
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import forecasts_file

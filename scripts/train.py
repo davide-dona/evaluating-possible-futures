@@ -8,7 +8,7 @@ from hydra.core.config_store import ConfigStore
 from hydra.utils import instantiate
 from omegaconf import MISSING, OmegaConf
 
-from possible_futures.cases import load_cases
+from possible_futures.datasets.cases import load_cases
 from possible_futures.datasets.prefix_suffix import PrefixSuffixDataset
 from possible_futures.datasets.tokenizer import Tokenizer
 from possible_futures.forecasters.u_ed_lstm import UEDLSTMForecaster

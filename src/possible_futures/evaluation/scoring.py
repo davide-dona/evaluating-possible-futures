@@ -7,10 +7,10 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from possible_futures.cases import Case
+from possible_futures.datasets.cases import Case
 from possible_futures.datasets.tokenizer import Tokenizer
 from possible_futures.evaluation.metrics import Metric
-from possible_futures.forecasts import Forecast
+from possible_futures.forecasters.forecasts import Forecast
 
 
 def mean_scores(

@@ -5,12 +5,12 @@ import pandas as pd
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
-from possible_futures.cases import load_cases
+from possible_futures.datasets.cases import load_cases
 from possible_futures.evaluation.scoring import load_scores
+from possible_futures.evaluation.tables import MetricColumn, properties_table, scores_table
 from possible_futures.preprocessing.splitting import OutOfTimeSplit
 from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import OUTPUTS, Split, scores_file, split_file
-from possible_futures.tables import MetricColumn, properties_table, scores_table
 
 
 @dataclass

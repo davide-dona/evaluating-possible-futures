@@ -4,15 +4,15 @@ from typing import ClassVar
 import numpy as np
 import pandas as pd
 
-from possible_futures.cases import Case
-from possible_futures.processes.process import END, Process
+from possible_futures.datasets.cases import Case
+from possible_futures.forecasters.next_activity import END, NextActivityDistribution
 
 # When the first simulated case starts.
 _ORIGIN = pd.Timestamp('2026-01-01')
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class SyntheticProcess(Process):
+class SyntheticProcess(NextActivityDistribution):
     """A, then B or C, then D, then E or F, then G.
 
     The choice between E and F depends on whether the case went through B or C.

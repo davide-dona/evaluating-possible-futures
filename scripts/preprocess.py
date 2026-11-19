@@ -6,7 +6,7 @@ import pandas as pd
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
-from possible_futures.cases import (
+from possible_futures.datasets.cases import (
     Case,
     num_activities,
     num_events,

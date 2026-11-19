@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from dataclasses import replace
 
 from possible_futures.distances import Distance
-from possible_futures.forecasts import Forecast
+from possible_futures.forecasters.forecasts import Forecast
 
 
 def medoid_index(draws: Sequence[tuple[str, ...]], *, distance: Distance) -> int:

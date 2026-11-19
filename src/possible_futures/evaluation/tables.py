@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from possible_futures.cases import num_activities, num_events, num_prefixes, num_variants
+from possible_futures.datasets.cases import num_activities, num_events, num_prefixes, num_variants
 from possible_futures.preprocessing.splitting import OutOfTimeSplit
 
 DECIMALS = 3

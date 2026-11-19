@@ -5,7 +5,7 @@ import torch
 from jaxtyping import Int64
 from torch.utils.data import Dataset
 
-from possible_futures.cases import Case
+from possible_futures.datasets.cases import Case
 from possible_futures.datasets.tokenizer import Tokenizer
 
 

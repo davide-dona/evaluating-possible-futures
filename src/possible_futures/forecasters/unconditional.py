@@ -4,7 +4,7 @@ from typing import Self
 
 import numpy as np
 
-from possible_futures.cases import Case
+from possible_futures.datasets.cases import Case
 from possible_futures.forecasters.forecaster import Forecaster
 
 

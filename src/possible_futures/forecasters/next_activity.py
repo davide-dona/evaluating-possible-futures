@@ -1,16 +1,19 @@
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 
 import numpy as np
 
-# The pseudo-activity a process gives as the next one when the case is over, the activity-level
+from possible_futures.forecasters.forecaster import Forecaster
+
+# The pseudo-activity a distribution gives as the next one when the case is over, the activity-level
 # counterpart of the EOS token.
 END = '<END>'
 
 
-class Process(ABC):
-    """A model of how cases unfold: the probability of every possible next activity after a
-    prefix. Suffixes follow from applying it repeatedly."""
+class NextActivityDistribution(ABC):
+    """The probability of every possible next activity after a prefix, known explicitly.
+    Suffixes follow from applying it repeatedly."""
 
     @abstractmethod
     def next_activity_probabilities(self, prefix: tuple[str, ...]) -> dict[str, float]:
@@ -82,6 +85,50 @@ class Process(ABC):
                 break
             suffix.append(activity)
         return tuple(suffix)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SamplingForecaster(Forecaster):
+    """Draws every suffix by sampling a distribution one activity at a time.
+
+    Attributes:
+        distribution: The distribution sampled.
+        rng: Samples the activities.
+    """
+
+    distribution: NextActivityDistribution
+    rng: np.random.Generator
+
+    def draw(
+        self, prefixes: Sequence[tuple[str, ...]], *, num_draws: int, max_steps: int
+    ) -> list[list[tuple[str, ...]]]:
+        return [
+            [
+                self.distribution.sample_suffix(prefix, rng=self.rng, max_steps=max_steps)
+                for _ in range(num_draws)
+            ]
+            for prefix in prefixes
+        ]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class GreedyForecaster(Forecaster):
+    """Continues every prefix with the most likely activity of a distribution at every step, so
+    all draws of a prefix are the same suffix.
+
+    Attributes:
+        distribution: The distribution followed.
+    """
+
+    distribution: NextActivityDistribution
+
+    def draw(
+        self, prefixes: Sequence[tuple[str, ...]], *, num_draws: int, max_steps: int
+    ) -> list[list[tuple[str, ...]]]:
+        return [
+            [self.distribution.greedy_suffix(prefix, max_steps=max_steps)] * num_draws
+            for prefix in prefixes
+        ]
 
 
 def _sample_activity(options: dict[str, float], *, rng: np.random.Generator) -> str:

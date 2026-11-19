@@ -4,7 +4,7 @@ from typing import Self
 
 import pandas as pd
 
-from possible_futures.cases import Case
+from possible_futures.datasets.cases import Case
 
 
 @dataclass(frozen=True, slots=True)

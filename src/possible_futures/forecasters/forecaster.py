@@ -2,8 +2,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Protocol
 
-from possible_futures.cases import Case
-from possible_futures.forecasts import Forecast, ForecastWriter
+from possible_futures.datasets.cases import Case
+from possible_futures.forecasters.forecasts import Forecast, ForecastWriter
 
 
 class Forecaster(Protocol):

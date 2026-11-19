@@ -3,12 +3,12 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Self
 
-from possible_futures.cases import Case
-from possible_futures.processes.process import END, Process
+from possible_futures.datasets.cases import Case
+from possible_futures.forecasters.next_activity import END, NextActivityDistribution
 
 
 @dataclass(frozen=True, slots=True)
-class MarkovChain(Process):
+class MarkovChain(NextActivityDistribution):
     """A first-order Markov chain: the next activity depends only on the last one.
 
     Attributes:
