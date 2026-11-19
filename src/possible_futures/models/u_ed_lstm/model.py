@@ -10,7 +10,7 @@ from torch import nn
 
 from possible_futures.datasets.collation import PrefixTokens
 from possible_futures.datasets.tokenizer import SpecialToken
-from possible_futures.models.lstm import GateDropoutStack, LSTMState
+from possible_futures.models.lstm import LSTMState, VariationalLSTM
 from possible_futures.models.u_ed_lstm.decoder import Decoder
 from possible_futures.models.u_ed_lstm.encoder import Encoder
 from possible_futures.models.u_ed_lstm.logits import GaussianHead, GaussianLogits
@@ -80,17 +80,17 @@ class UEDLSTM(nn.Module):
                 num_embeddings=vocabulary_size, embedding_dim=width, padding_idx=SpecialToken.PAD
             )
 
-        def stack() -> GateDropoutStack:
-            return GateDropoutStack(
+        def lstm() -> VariationalLSTM:
+            return VariationalLSTM(
                 input_size=width, hidden_size=hidden_size, num_layers=num_layers, dropout=dropout
             )
 
         # The order the parts are built in sets the random init of every parameter.
         encoder_embedding, decoder_embedding = embedding(), embedding()
-        encoder_stack, decoder_stack = stack(), stack()
+        encoder_lstm, decoder_lstm = lstm(), lstm()
         head = GaussianHead(hidden_size=hidden_size, num_classes=num_classes)
-        self.encoder = Encoder(embedding=encoder_embedding, stack=encoder_stack)
-        self.decoder = Decoder(embedding=decoder_embedding, stack=decoder_stack, head=head)
+        self.encoder = Encoder(embedding=encoder_embedding, lstm=encoder_lstm)
+        self.decoder = Decoder(embedding=decoder_embedding, lstm=decoder_lstm, head=head)
 
     def forward(
         self, prefixes: PrefixTokens, targets: Int64[torch.Tensor, 'B T'], *, forced: Sequence[bool]

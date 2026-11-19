@@ -2,7 +2,7 @@ import torch
 from jaxtyping import Float, Int64
 from torch import nn
 
-from possible_futures.models.lstm import GateDropoutStack, GateMasks, LSTMState
+from possible_futures.models.lstm import DropoutMasks, LSTMState, VariationalLSTM
 from possible_futures.models.u_ed_lstm.logits import GaussianHead, GaussianLogits
 
 
@@ -14,25 +14,25 @@ class Decoder(nn.Module):
     """
 
     def __init__(
-        self, *, embedding: nn.Embedding, stack: GateDropoutStack, head: GaussianHead
+        self, *, embedding: nn.Embedding, lstm: VariationalLSTM, head: GaussianHead
     ) -> None:
         """
         Args:
             embedding: Embeds every input token.
-            stack: The layers reading the embeddings.
+            lstm: The layers reading the embeddings.
             head: Maps the top layer's hidden state to the logits of the next event.
         """
         super().__init__()
         self.embedding = embedding
-        self.stack = stack
+        self.lstm = lstm
         self.head = head
 
-    def sample_masks(self, rows: int) -> list[GateMasks]:
+    def sample_masks(self, rows: int) -> list[DropoutMasks]:
         """Draw the dropout masks of every layer, bottom first."""
-        return self.stack.sample_masks(rows)
+        return self.lstm.sample_masks(rows)
 
     def start(
-        self, tokens: Int64[torch.Tensor, ' B'], encoded: LSTMState, *, masks: list[GateMasks]
+        self, tokens: Int64[torch.Tensor, ' B'], encoded: LSTMState, *, masks: list[DropoutMasks]
     ) -> tuple[GaussianLogits, list[LSTMState]]:
         """Read the first input of every row, starting from the encoder's final state.
 
@@ -44,13 +44,17 @@ class Decoder(nn.Module):
         Returns:
             The logits `[B, C]` of the next event, and each layer's new state.
         """
-        outputs, states = self.stack.forward_chained(
+        outputs, states = self.lstm.forward_from_state(
             inputs=self._read(tokens), state=encoded, masks=masks
         )
         return self.head(outputs.squeeze(dim=1)), states  # [B, 1, H] -> [B, H]
 
     def step(
-        self, tokens: Int64[torch.Tensor, ' B'], states: list[LSTMState], *, masks: list[GateMasks]
+        self,
+        tokens: Int64[torch.Tensor, ' B'],
+        states: list[LSTMState],
+        *,
+        masks: list[DropoutMasks],
     ) -> tuple[GaussianLogits, list[LSTMState]]:
         """Read one input per row after the first, every layer from its own state.
 
@@ -62,7 +66,7 @@ class Decoder(nn.Module):
         Returns:
             The logits `[B, C]` of the next event, and each layer's new state.
         """
-        outputs, states = self.stack(inputs=self._read(tokens), states=states, masks=masks)
+        outputs, states = self.lstm(inputs=self._read(tokens), states=states, masks=masks)
         return self.head(outputs.squeeze(dim=1)), states  # [B, 1, H] -> [B, H]
 
     def _read(self, tokens: Int64[torch.Tensor, ' B']) -> Float[torch.Tensor, 'B 1 D']:
