@@ -1,0 +1,10 @@
+# @package _global_
+# A first-order Markov chain fitted on train, its most likely activity at every step.
+forecaster:
+  name: markov_greedy
+  model: MARKOV
+  strategy: GREEDY
+device: cpu
+max_rows: 100000
+# Every draw of a greedy forecaster is the same suffix.
+num_draws: 1

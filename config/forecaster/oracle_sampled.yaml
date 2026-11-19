@@ -1,6 +1,6 @@
 # @package _global_
 # The true process of the simulated dataset, sampled.
-decoder:
+forecaster:
   name: oracle_sampled
   model: ORACLE
   strategy: SAMPLED

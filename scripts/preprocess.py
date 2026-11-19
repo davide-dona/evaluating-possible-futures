@@ -6,30 +6,35 @@ import pandas as pd
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
-from possible_futures.datasets.cases import Cases
-from possible_futures.datasets.prefixes import Prefixes
-from possible_futures.datasets.vocabulary import Vocabulary
-from possible_futures.preprocessing.events import (
-    case_durations_days,
-    case_lengths,
-    drop_outlier_cases,
-    num_cases,
-    read_original_log,
+from possible_futures.cases import (
+    Case,
+    num_activities,
+    num_events,
+    num_prefixes,
+    num_variants,
+    save_cases,
 )
-from possible_futures.preprocessing.splitting import out_of_time_split
+from possible_futures.datasets.tokenizer import Tokenizer
+from possible_futures.preprocessing.log import drop_outliers, read_log
+from possible_futures.preprocessing.splitting import OutOfTimeSplit
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import (
     Split,
     original_log_file,
     split_file,
-    test_prefixes_file,
-    vocabulary_file,
+    tokenizer_file,
 )
 
 
 @dataclass
 class PreprocessConfig:
+    """The settings of the preprocess stage.
+
+    Attributes:
+        data: The dataset.
+    """
+
     data: DataConfig = MISSING
 
 
@@ -38,7 +43,7 @@ ConfigStore.instance().store(name='preprocess_schema', node=PreprocessConfig)
 
 @hydra.main(version_base='1.3', config_path='../config', config_name='preprocess')
 def main(config: PreprocessConfig) -> None:
-    """Filter, sort, and split a raw log, and fit the vocabulary on its train split."""
+    """Filter and split a raw log, pick its scored test prefixes, and fit the tokenizer."""
     data = config.data
     split = data.split
     banner(
@@ -51,51 +56,50 @@ def main(config: PreprocessConfig) -> None:
         },
     )
     with step('Reading the original log'):
-        events = read_original_log(
+        cases = read_log(
             original_log_file(data.name),
             case_key=data.case_key,
             activity_key=data.activity_key,
             timestamp_key=data.timestamp_key,
             separator=data.separator,
         )
-        print(f'  {len(events):,} events over {num_cases(events):,} cases', flush=True)
+        print(f'  {num_events(cases):,} events over {len(cases):,} cases', flush=True)
 
     max_duration_days = float(
-        np.percentile(case_durations_days(events), split.max_case_duration_percentile)
+        np.percentile([case.duration_days for case in cases], q=split.max_case_duration_percentile)
     )
-    max_length = int(np.ceil(np.percentile(case_lengths(events), split.max_case_length_percentile)))
+    max_length = int(
+        np.ceil(np.percentile([len(case) for case in cases], q=split.max_case_length_percentile))
+    )
     with step(
         f'Dropping the cases longer than {max_length} events or running longer than '
         f'{max_duration_days:,.1f} days'
     ):
-        kept = drop_outlier_cases(
-            events, max_duration_days=max_duration_days, max_length=max_length
-        )
-        _report_dropped(read=num_cases(events), kept=num_cases(kept))
+        kept = drop_outliers(cases, max_length=max_length, max_duration_days=max_duration_days)
+        _report_dropped(read=len(cases), kept=len(kept))
 
     with step(
         f'Debiasing the last {max_duration_days:,.1f} days and splitting the log out of time'
     ):
-        train, test, test_prefixes = out_of_time_split(
+        splits = OutOfTimeSplit.of(
             kept, test_fraction=split.test_fraction, end_window_days=max_duration_days
         )
-        _report_dropped(read=num_cases(kept), kept=len(train) + len(test))
+        _report_dropped(read=len(kept), kept=len(splits.train) + len(splits.test))
 
-    with step('Writing the splits, the test prefixes and the vocabulary'):
-        train.save(split_file(data.name, Split.TRAIN))
-        test.save(split_file(data.name, Split.TEST))
-        test_prefixes.save(test_prefixes_file(data.name))
-        vocabulary = Vocabulary.fit(train.traces)
-        vocabulary.save(vocabulary_file(data.name))
+    with step('Writing the splits and the tokenizer'):
+        save_cases(splits.train, path=split_file(data.name, Split.TRAIN))
+        save_cases(splits.test, path=split_file(data.name, Split.TEST))
+        tokenizer = Tokenizer.fit(splits.train)
+        tokenizer.save(tokenizer_file(data.name))
 
     summary = pd.DataFrame(
         {
-            'train': _describe(train, prefixes=Prefixes.every(train)),
-            'test': _describe(test, prefixes=test_prefixes),
+            'train': _describe(splits.train),
+            'test': _describe(splits.test),
         }
     ).T
     print(
-        f'\nPreprocessed "{data.name}": {len(vocabulary.activities)} train activities, cases of '
+        f'\nPreprocessed "{data.name}": {len(tokenizer.activities)} train activities, cases of '
         f'at most {max_length} events and {max_duration_days:,.1f} days\n'
         f'{summary.to_string()}\n'
         'Train counts every prefix with a non-empty suffix, test only the scored ones.',
@@ -103,21 +107,33 @@ def main(config: PreprocessConfig) -> None:
     )
 
 
-def _describe(cases: Cases, *, prefixes: Prefixes) -> dict[str, str]:
-    """The size of a split, its prefixes, and the shape of its cases, formatted for printing."""
-    lengths = cases.case_lengths
+def _describe(cases: list[Case]) -> dict[str, str]:
+    """Describe the size of a split, its prefixes, and the shape of its cases, for printing.
+
+    Args:
+        cases: The cases of the split.
+
+    Returns:
+        dict[str, str]: Every statistic, formatted, keyed by its name.
+    """
+    lengths = np.array([len(case) for case in cases])
     return {
         'cases': f'{len(cases):,}',
-        'events': f'{lengths.sum():,}',
-        'prefixes': f'{len(prefixes):,}',
-        'variants': f'{cases.num_variants():,}',
-        'activities': f'{cases.num_activities()}',
+        'events': f'{num_events(cases):,}',
+        'prefixes': f'{num_prefixes(cases):,}',
+        'variants': f'{num_variants(cases):,}',
+        'activities': f'{num_activities(cases)}',
         'case length': f'{lengths.mean():.1f} ± {lengths.std(ddof=1):.1f}',
     }
 
 
 def _report_dropped(*, read: int, kept: int) -> None:
-    """Report how many of the cases read were dropped."""
+    """Print how many of the cases read were dropped.
+
+    Args:
+        read: The number of cases before the drop.
+        kept: The number of cases after it.
+    """
     dropped = read - kept
     print(f'  dropped {dropped:,} of {read:,} cases ({dropped / read:.2%})', flush=True)
 

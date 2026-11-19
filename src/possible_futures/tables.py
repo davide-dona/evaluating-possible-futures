@@ -1,35 +1,40 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 
-from possible_futures.datasets.cases import Cases
-from possible_futures.preprocessing.splitting import TrainTestSplit
+from possible_futures.cases import num_activities, num_events, num_prefixes, num_variants
+from possible_futures.preprocessing.splitting import OutOfTimeSplit
 
 DECIMALS = 3
 
 
 @dataclass(frozen=True, slots=True)
 class MetricColumn:
-    """How a table prints the mean scores of one metric."""
+    """How a table prints the mean scores of one metric.
 
-    header: str  # LaTeX
+    Attributes:
+        header: The column header, in LaTeX.
+        higher_is_better: Whether the best score of a column is its highest, printed in bold.
+    """
+
+    header: str
     higher_is_better: bool
 
 
 def scores_table(
     means: Mapping[str, pd.DataFrame],
     *,
-    decodings: Mapping[str, str],
+    forecasts: Mapping[str, str],
     metrics: Mapping[str, MetricColumn],
 ) -> str:
     """A booktabs `tabular` of the mean scores of every dataset.
 
     Args:
-        means: The mean scores of every decoding, one row each, for every dataset, keyed by the
-            name the table prints. A table of a single dataset has no dataset column.
-        decodings: The macro of every decoding, in the order of the rows. A decoding a dataset
-            was not scored on has no row.
+        means: The mean scores of every set of forecasts, one row each, for every dataset, keyed
+            by the name the table prints. A table of a single dataset has no dataset column.
+        forecasts: The macro of every set of forecasts, in the order of the rows.
         metrics: The column of every metric, keyed by its name in `means`, in the order of
             the columns.
 
@@ -47,8 +52,7 @@ def scores_table(
         ' & '.join(headers) + r' \\',
     ]
     for index, (dataset, scores) in enumerate(means.items()):
-        rows = scores.loc[[decoding for decoding in decodings if decoding in scores.index]]
-        cells = rows[list(metrics)].round(DECIMALS)
+        cells = scores.loc[list(forecasts), list(metrics)].round(DECIMALS)
         best = {
             metric: cells[metric].max() if column.higher_is_better else cells[metric].min()
             for metric, column in metrics.items()
@@ -56,7 +60,7 @@ def scores_table(
         lines.append(r'\addlinespace' if index else r'\midrule')
         if grouped:
             lines.append(rf'\multirow{{{len(cells)}}}{{*}}{{{dataset}}}')
-        for decoding, values in cells.iterrows():
+        for name, values in cells.iterrows():
             numbers = [
                 rf'\bfseries {value:.{DECIMALS}f}'
                 if value == best[metric]
@@ -64,17 +68,17 @@ def scores_table(
                 for metric, value in values.items()
             ]
             group = [''] if grouped else []
-            lines.append(' & '.join([*group, decodings[decoding], *numbers]) + r' \\')
+            lines.append(' & '.join([*group, forecasts[name], *numbers]) + r' \\')
     lines += [r'\bottomrule', r'\end{tabular}', '']
     return '\n'.join(lines)
 
 
-def properties_table(splits: Mapping[str, TrainTestSplit]) -> str:
+def properties_table(splits: Mapping[str, OutOfTimeSplit]) -> str:
     """A booktabs `tabular` of the size and case lengths of every log and its test prefixes.
 
     Args:
-        splits: The train and test splits of every preprocessed log, keyed by the name the
-            table prints.
+        splits: The train and test cases of every preprocessed log, keyed by the name the table
+            prints.
 
     Returns:
         The table, to `\\input` inside a `table` environment.
@@ -87,16 +91,16 @@ def properties_table(splits: Mapping[str, TrainTestSplit]) -> str:
         r'\midrule',
     ]
     for name, split in splits.items():
-        cases = Cases.concat([split.train, split.test])
-        lengths = cases.case_lengths
+        log = split.train + split.test
+        lengths = np.array([len(case) for case in log])
         cells = [
             name,
-            _grouped_digits(len(cases)),
-            _grouped_digits(int(lengths.sum())),
-            _grouped_digits(cases.num_variants()),
-            _grouped_digits(cases.num_activities()),
+            _grouped_digits(len(log)),
+            _grouped_digits(num_events(log)),
+            _grouped_digits(num_variants(log)),
+            _grouped_digits(num_activities(log)),
             f'{lengths.mean():.1f}+{lengths.std(ddof=1):.1f}',
-            _grouped_digits(len(split.test_prefixes)),
+            _grouped_digits(num_prefixes(split.test)),
         ]
         lines.append(' & '.join(cells) + r' \\')
     lines += [r'\bottomrule', r'\end{tabular}', '']

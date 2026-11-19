@@ -1,93 +1,100 @@
-from typing import NamedTuple
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
+from typing import Self
 
-import numpy as np
 import pandas as pd
 
-from possible_futures.datasets.cases import Cases
-from possible_futures.datasets.prefixes import Prefixes
-from possible_futures.preprocessing.events import (
-    ACTIVITY_COLUMN,
-    CASE_COLUMN,
-    TIMESTAMP_COLUMN,
-    case_lengths,
-)
+from possible_futures.cases import Case
 
 
-class TrainTestSplit(NamedTuple):
-    train: Cases
-    test: Cases
-    test_prefixes: Prefixes  # the test prefixes that are scored
+@dataclass(frozen=True, slots=True)
+class OutOfTimeSplit:
+    """The train and test cases of a log, split in time: the model trains on the past and is
+    scored on the future.
 
-
-def out_of_time_split(
-    events: pd.DataFrame, *, test_fraction: float, end_window_days: float
-) -> TrainTestSplit:
-    """Drop the cases starting in the last `end_window_days` of the log, then split the rest at
-    the start of the case at the `1 - test_fraction` quantile of case starts.
-
-    Train keeps the cases finished before the separation, test the cases still running at it.
-    The test prefixes of a case run from its shortest to its longest. The longest is the last one
-    that ends before the end window and leaves a non-empty suffix. The shortest is the first one
-    reaching past the separation, 1 for a case started after it.
+    Attributes:
+        train: The cases that end before the separation, with all their prefixes.
+        test: The cases that end at or after it, each holding only its scored prefixes.
     """
-    events = _sort(events)
-    window_start = events[TIMESTAMP_COLUMN].max() - pd.Timedelta(days=end_window_days)
-    # A prefix of length k ends at the k-th event in time order, so the events before the window
-    # count the prefixes ending before it.
-    before_window = (events[TIMESTAMP_COLUMN] <= window_start).groupby(events[CASE_COLUMN]).sum()
-    max_prefix_lengths = np.minimum(before_window, case_lengths(events) - 1)
-    events = events[events[CASE_COLUMN].isin(before_window.index[before_window > 0])]
 
-    edges = events.groupby(CASE_COLUMN)[TIMESTAMP_COLUMN].agg(['min', 'max'])
-    start_times, stop_times = edges['min'], edges['max']
-    first_test_case = int(len(edges) * (1 - test_fraction))
-    separation_time = np.sort(start_times.values)[first_test_case]
-    train_cases = stop_times.index[stop_times.values < separation_time]
-    test_cases = stop_times.index[stop_times.values >= separation_time]
-    crossing = test_cases.difference(start_times.sort_values().index[first_test_case:])
+    train: list[Case]
+    test: list[Case]
 
-    min_prefix_lengths = pd.Series(1, index=edges.index)
-    shortest = _shortest_prefix_lengths_after(
-        events[events[CASE_COLUMN].isin(crossing)], separation_time=separation_time
-    )
-    min_prefix_lengths.loc[shortest.index] = shortest
-    test = _cases(events[events[CASE_COLUMN].isin(test_cases)])
-    return TrainTestSplit(
-        train=_cases(events[events[CASE_COLUMN].isin(train_cases)]),
-        test=test,
-        test_prefixes=Prefixes.within(
-            test.case_ids,
-            shortest=min_prefix_lengths.loc[test.case_ids].to_numpy(np.int64),
-            longest=max_prefix_lengths.loc[test.case_ids].to_numpy(np.int64),
-        ),
-    )
+    @classmethod
+    def of(cls, cases: Sequence[Case], *, test_fraction: float, end_window_days: float) -> Self:
+        """Drop the cases starting in the last `end_window_days` of the log. The separation
+        time is computed as the start of the case at the `1 - test_fraction` quantile of the
+        kept cases.
 
+        Train keeps the cases that end before the separation, with all their prefixes. Test keeps
+        the cases that end at or after it, with only their scored prefixes. A prefix is scored
+        when its last event falls after the separation and no later than the start of the end
+        window, and at least one event of the case follows it.
 
-def _sort(events: pd.DataFrame) -> pd.DataFrame:
-    """Sort cases by start time and the events of each case by timestamp, ties kept in order."""
-    case_start = events.groupby(CASE_COLUMN)[TIMESTAMP_COLUMN].min()
-    rank = pd.Series(
-        data=range(len(case_start)), index=case_start.sort_values(kind='mergesort').index
-    )
-    events = events.assign(_case_rank=events[CASE_COLUMN].map(rank))
-    events = events.sort_values(by=['_case_rank', TIMESTAMP_COLUMN], kind='mergesort')
-    return events.drop(columns='_case_rank').reset_index(drop=True)
+        Args:
+            cases: The cases of the log.
+            test_fraction: The fraction of the kept cases that start the test split.
+            end_window_days: The days before the last event of the log in which starting cases
+                are dropped and prefixes are not scored.
 
+        Returns:
+            OutOfTimeSplit: The cases of each split, in order of their start.
+        """
+        # Filter out the cases starting in the last `end_window_days`
+        window_start = max(case.end for case in cases) - pd.Timedelta(days=end_window_days)
+        kept = sorted(
+            (case for case in cases if case.start <= window_start),
+            key=lambda case: (case.start, case.case_id),
+        )
+        # Compute the separation time as the start of the first test case
+        first_test_case = int(len(kept) * (1 - test_fraction))
+        separation = kept[first_test_case].start
 
-def _shortest_prefix_lengths_after(
-    events: pd.DataFrame, *, separation_time: np.datetime64
-) -> pd.Series:
-    """The length of the shortest prefix of every case that holds an event after the separation."""
-    # A prefix of length k takes the first k events, so its length is the 1-based position of the
-    # event it has to reach.
-    positions = events.groupby(CASE_COLUMN).cumcount() + 1
-    # Compared as numpy values, since a tz-aware column and a numpy timestamp are not comparable
-    # as pandas objects.
-    selected = events[TIMESTAMP_COLUMN].values > separation_time
-    return positions[selected].groupby(events[CASE_COLUMN][selected]).min()
+        return cls(
+            # Train keeps the cases that end before the separation, with all their prefixes.
+            train=[case for case in kept if case.end < separation],
+            test=[
+                # Test keeps cases ending at or after the separation, with only the scored prefixes.
+                replace(
+                    case,
+                    prefix_lengths=_scored_lengths(
+                        case,
+                        separation=separation,
+                        window_start=window_start,
+                        crosses_separation=rank < first_test_case,
+                    ),
+                )
+                for rank, case in enumerate(kept)
+                if case.end >= separation
+            ],
+        )
 
 
-def _cases(events: pd.DataFrame) -> Cases:
-    """The cases of sorted events, in order of their first event."""
-    traces = events.groupby(CASE_COLUMN, sort=False)[ACTIVITY_COLUMN].agg(tuple)
-    return Cases(case_ids=traces.index.to_numpy(dtype=object), traces=tuple(traces))
+def _scored_lengths(
+    case: Case, *, separation: pd.Timestamp, window_start: pd.Timestamp, crosses_separation: bool
+) -> range:
+    """The lengths of the scored prefixes of a test case.
+
+    Args:
+        case: The test case.
+        separation: The start of the first test case.
+        window_start: The start of the end window.
+        crosses_separation: Whether the case starts ahead of the first test case.
+
+    Returns:
+        range: The lengths, empty when no prefix is scored.
+    """
+    # A case that starts before the separation is scored only from the first prefix that ends
+    # after it. A prefix of length k ends at the k-th event.
+    shortest = 1
+    if crosses_separation:
+        shortest = next(
+            (
+                position
+                for position, timestamp in enumerate(case.timestamps, start=1)
+                if timestamp > separation
+            ),
+            1,
+        )
+    before_window = sum(timestamp <= window_start for timestamp in case.timestamps)
+    return range(shortest, min(before_window, len(case) - 1) + 1)
