@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Self
 
 import numpy as np
+from jaxtyping import Int64
 
 from possible_futures.cases import Case
 
@@ -62,14 +63,14 @@ class Vocabulary:
         """The label of every token: the special tokens, then the train activities."""
         return tuple(token.label for token in SpecialToken) + self.activities
 
-    def encode(self, activities: Iterable[str]) -> np.ndarray:
+    def encode(self, activities: Iterable[str]) -> Int64[np.ndarray, ' N']:
         """Map activities to tokens, UNK for an activity the train split does not hold.
 
         Args:
             activities: The activities mapped.
 
         Returns:
-            np.ndarray: The int64 token of every activity.
+            np.ndarray: The token of every activity.
         """
         return np.fromiter(
             (self._tokens.get(activity, SpecialToken.UNK) for activity in activities),

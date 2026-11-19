@@ -7,6 +7,7 @@ from typing import NamedTuple, Self
 import numpy as np
 import torch
 import torch.nn.functional as F
+from jaxtyping import Float, Int64
 from safetensors.torch import load_file, save_file
 from torch import nn
 
@@ -24,24 +25,24 @@ def embedding_dim(num_classes: int) -> int:
     return min(600, round(1.6 * num_classes**0.56))
 
 
-def _to_classes(tokens: torch.Tensor) -> torch.Tensor:
+def _to_classes(tokens: Int64[torch.Tensor, '*shape']) -> Int64[torch.Tensor, '*shape']:
     """The output class of every token, UNK and up."""
     return tokens - SpecialToken.UNK
 
 
-def _to_tokens(classes: torch.Tensor) -> torch.Tensor:
+def _to_tokens(classes: Int64[torch.Tensor, '*shape']) -> Int64[torch.Tensor, '*shape']:
     """The token of every output class."""
     return classes + SpecialToken.UNK
 
 
 class GaussianLogits(NamedTuple):
-    """Independent Gaussian logits over the output classes, `[..., C]` each."""
+    """Independent Gaussian logits over the output classes."""
 
-    mean: torch.Tensor
-    log_variance: torch.Tensor
+    mean: Float[torch.Tensor, '*batch C']
+    log_variance: Float[torch.Tensor, '*batch C']
 
-    def draw(self, *, samples: int) -> torch.Tensor:
-        """Draw `samples` logit vectors per distribution, `[..., C] -> [S, ..., C]`."""
+    def draw(self, *, samples: int) -> Float[torch.Tensor, 'samples *batch C']:
+        """Draw `samples` logit vectors per distribution."""
         noise = torch.randn(size=(samples, *self.mean.shape), device=self.mean.device)
         return self.mean + (0.5 * self.log_variance).exp() * noise
 
@@ -49,7 +50,7 @@ class GaussianLogits(NamedTuple):
 class Loss(NamedTuple):
     """The training objective: the `total` to backpropagate and the terms it sums."""
 
-    total: torch.Tensor
+    total: Float[torch.Tensor, '']
     data: float
     penalty: float
 
@@ -123,7 +124,7 @@ class UEDLSTM(nn.Module):
         return states[-1]
 
     def decode_first(
-        self, tokens: torch.Tensor, encoded: LSTMState, *, masks: list[GateMasks]
+        self, tokens: Int64[torch.Tensor, ' B'], encoded: LSTMState, *, masks: list[GateMasks]
     ) -> tuple[GaussianLogits, list[LSTMState]]:
         """Read the first decoder input of every row, starting from the encoder's final state.
 
@@ -140,7 +141,7 @@ class UEDLSTM(nn.Module):
         return self._logits(outputs), states
 
     def decode_step(
-        self, tokens: torch.Tensor, states: list[LSTMState], *, masks: list[GateMasks]
+        self, tokens: Int64[torch.Tensor, ' B'], states: list[LSTMState], *, masks: list[GateMasks]
     ) -> tuple[GaussianLogits, list[LSTMState]]:
         """Read one decoder input per row after the first, every layer from its own state.
 
@@ -156,14 +157,14 @@ class UEDLSTM(nn.Module):
         outputs, states = self.decoder(inputs=inputs, states=states, masks=masks)
         return self._logits(outputs), states
 
-    def _logits(self, outputs: torch.Tensor) -> GaussianLogits:
+    def _logits(self, outputs: Float[torch.Tensor, 'B 1 H']) -> GaussianLogits:
         features = outputs.squeeze(dim=1)  # [B, 1, H] -> [B, H]
         return GaussianLogits(
             mean=self.mean_head(features), log_variance=self.log_variance_head(features)
         )
 
     def forward(
-        self, prefixes: PrefixTokens, targets: torch.Tensor, *, forced: Sequence[bool]
+        self, prefixes: PrefixTokens, targets: Int64[torch.Tensor, 'B T'], *, forced: Sequence[bool]
     ) -> GaussianLogits:
         """Predict the logit distribution of each target position, dropout active.
 
@@ -195,7 +196,9 @@ class UEDLSTM(nn.Module):
             log_variance=torch.stack([step.log_variance for step in steps], dim=1),
         )
 
-    def loss(self, logits: GaussianLogits, targets: torch.Tensor, *, weight_penalty: float) -> Loss:
+    def loss(
+        self, logits: GaussianLogits, targets: Int64[torch.Tensor, 'B T'], *, weight_penalty: float
+    ) -> Loss:
         """The full objective: the cross-entropy of the targets `[B, T]` under logits `[B, T, C]`,
         averaged over `logit_samples` Gaussian logit draws, the positions, and the batch, plus
         `weight_penalty` times the sum of the squared parameters."""
@@ -206,7 +209,9 @@ class UEDLSTM(nn.Module):
         return Loss(total=data + penalty, data=data.item(), penalty=penalty.item())
 
     @torch.no_grad()
-    def draw(self, prefixes: PrefixTokens, *, num_draws: int, max_steps: int) -> torch.Tensor:
+    def draw(
+        self, prefixes: PrefixTokens, *, num_draws: int, max_steps: int
+    ) -> Int64[torch.Tensor, 'B S L']:
         """Draw `num_draws` suffixes per prefix.
 
         Each draw encodes its prefix under its own dropout masks, and at every step draws new

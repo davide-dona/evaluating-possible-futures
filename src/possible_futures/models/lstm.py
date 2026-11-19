@@ -2,21 +2,22 @@ import math
 from typing import NamedTuple
 
 import torch
+from jaxtyping import Bool, Float
 from torch import nn
 
 
 class LSTMState(NamedTuple):
     """The states of one layer."""
 
-    hidden: torch.Tensor  # [B, H]
-    cell: torch.Tensor  # [B, H]
+    hidden: Float[torch.Tensor, 'B H']
+    cell: Float[torch.Tensor, 'B H']
 
 
 class GateMasks(NamedTuple):
     """Variational dropout masks of one layer, one per row and gate, scaled by `1 / (1 - p)`."""
 
-    inputs: torch.Tensor  # [B, 4, I]
-    hidden: torch.Tensor  # [B, 4, H]
+    inputs: Float[torch.Tensor, 'B 4 I']
+    hidden: Float[torch.Tensor, 'B 4 H']
 
 
 class GateDropoutLSTMLayer(nn.Module):
@@ -45,14 +46,17 @@ class GateDropoutLSTMLayer(nn.Module):
     def sample_masks(self, rows: int) -> GateMasks:
         """Draw one Bernoulli mask per row and gate, on the input and on the hidden state."""
 
-        def draw(width: int) -> torch.Tensor:
+        def draw(width: int) -> Float[torch.Tensor, 'rows 4 width']:
             keep = torch.rand(size=(rows, 4, width), device=self.bias.device) >= self.dropout
             return keep.to(dtype=self.bias.dtype) / (1.0 - self.dropout)
 
         return GateMasks(inputs=draw(self.input_size), hidden=draw(self.hidden_size))
 
     def _step(
-        self, projected_inputs: torch.Tensor, hidden: torch.Tensor, cell: torch.Tensor
+        self,
+        projected_inputs: Float[torch.Tensor, 'B 4 H'],
+        hidden: Float[torch.Tensor, 'B 4 H'],
+        cell: Float[torch.Tensor, 'B H'],
     ) -> LSTMState:
         """One LSTM step from an already projected input and a gate-wise masked hidden state.
 
@@ -73,12 +77,12 @@ class GateDropoutLSTMLayer(nn.Module):
 
     def forward(
         self,
-        inputs: torch.Tensor,
+        inputs: Float[torch.Tensor, 'B T I'],
         state: LSTMState,
         *,
         masks: GateMasks,
-        advancing: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, LSTMState]:
+        advancing: Bool[torch.Tensor, 'B T'] | None = None,
+    ) -> tuple[Float[torch.Tensor, 'B T H'], LSTMState]:
         """Run the layer over inputs `[B, T, I]` from `state`.
 
         Args:
@@ -138,12 +142,12 @@ class GateDropoutStack(nn.Module):
 
     def forward_chained(
         self,
-        inputs: torch.Tensor,
+        inputs: Float[torch.Tensor, 'B T I'],
         state: LSTMState,
         *,
         masks: list[GateMasks],
-        advancing: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, list[LSTMState]]:
+        advancing: Bool[torch.Tensor, 'B T'] | None = None,
+    ) -> tuple[Float[torch.Tensor, 'B T H'], list[LSTMState]]:
         """Run the stack over inputs `[B, T, I]`, the bottom layer from `state` and every upper
         layer from the final state of the layer below.
 
@@ -167,8 +171,12 @@ class GateDropoutStack(nn.Module):
         return inputs, states
 
     def forward(
-        self, inputs: torch.Tensor, states: list[LSTMState], *, masks: list[GateMasks]
-    ) -> tuple[torch.Tensor, list[LSTMState]]:
+        self,
+        inputs: Float[torch.Tensor, 'B T I'],
+        states: list[LSTMState],
+        *,
+        masks: list[GateMasks],
+    ) -> tuple[Float[torch.Tensor, 'B T H'], list[LSTMState]]:
         """Run the stack over inputs `[B, T, I]`, every layer from its own state in `states`.
 
         Returns:

@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from typing import NamedTuple
 
 import torch
+from jaxtyping import Int64
 from torch.utils.data import Dataset
 
 from possible_futures.cases import Case
@@ -11,8 +12,8 @@ from possible_futures.datasets.vocabulary import Vocabulary
 class PrefixSuffix(NamedTuple):
     """The tokens of one prefix of a case and of the suffix following it."""
 
-    prefix: torch.Tensor  # int64, [P]
-    suffix: torch.Tensor  # int64, [S]
+    prefix: Int64[torch.Tensor, ' P']
+    suffix: Int64[torch.Tensor, ' L']
 
 
 class PrefixSuffixDataset(Dataset[PrefixSuffix]):

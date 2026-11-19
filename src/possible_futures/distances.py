@@ -3,6 +3,7 @@ from typing import Protocol
 
 import numpy as np
 import torch
+from jaxtyping import Float64
 from rapidfuzz import process
 from rapidfuzz.distance import DamerauLevenshtein
 
@@ -13,7 +14,7 @@ class Distance(Protocol):
 
     def __call__(
         self, *, left: Sequence[tuple[int, ...]], right: Sequence[tuple[int, ...]]
-    ) -> np.ndarray:
+    ) -> Float64[np.ndarray, 'N M']:
         """The `[N, M]` distances between `N` suffixes and `M` suffixes."""
         ...
 
@@ -38,7 +39,7 @@ class Exact(Distance):
 
     def __call__(
         self, *, left: Sequence[tuple[int, ...]], right: Sequence[tuple[int, ...]]
-    ) -> np.ndarray:
+    ) -> Float64[np.ndarray, 'N M']:
         ids: dict[tuple[int, ...], int] = {}
         left_ids = [ids.setdefault(suffix, len(ids)) for suffix in left]
         right_ids = [ids.setdefault(suffix, len(ids)) for suffix in right]
@@ -51,7 +52,7 @@ class Bigram(Distance):
 
     def __call__(
         self, *, left: Sequence[tuple[int, ...]], right: Sequence[tuple[int, ...]]
-    ) -> np.ndarray:
+    ) -> Float64[np.ndarray, 'N M']:
         # Mark the start and end of each suffix with 0, which no activity has as its id
         codes = [np.array([0, *s, 0], dtype=np.int64) for s in [*left, *right]]
         # Give each bigram (a, b) a unique id: a * base + b
@@ -75,7 +76,7 @@ class NormalizedDamerauLevenshtein(Distance):
 
     def __call__(
         self, *, left: Sequence[tuple[int, ...]], right: Sequence[tuple[int, ...]]
-    ) -> np.ndarray:
+    ) -> Float64[np.ndarray, 'N M']:
         return process.cdist(
             queries=left,
             choices=right,
