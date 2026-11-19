@@ -21,17 +21,38 @@ _ARGUMENTS_FILE = 'arguments.json'
 
 
 def embedding_dim(num_classes: int) -> int:
-    """The width of the embeddings of `num_classes` classes."""
+    """The width of the embeddings of `num_classes` classes.
+
+    Args:
+        num_classes: The number of output classes.
+
+    Returns:
+        int: The width of every embedding.
+    """
     return min(600, round(1.6 * num_classes**0.56))
 
 
 def _to_classes(tokens: Int64[torch.Tensor, '*shape']) -> Int64[torch.Tensor, '*shape']:
-    """The output class of every token, UNK and up."""
+    """The output class of every token, UNK and up.
+
+    Args:
+        tokens: The tokens, UNK and up.
+
+    Returns:
+        torch.Tensor: The output class of every token.
+    """
     return tokens - SpecialToken.UNK
 
 
 def _to_tokens(classes: Int64[torch.Tensor, '*shape']) -> Int64[torch.Tensor, '*shape']:
-    """The token of every output class."""
+    """The token of every output class.
+
+    Args:
+        classes: The output classes.
+
+    Returns:
+        torch.Tensor: The token of every class.
+    """
     return classes + SpecialToken.UNK
 
 
@@ -110,7 +131,15 @@ class UEDLSTM(nn.Module):
         self.log_variance_head = nn.Linear(in_features=hidden_size, out_features=num_classes)
 
     def encode(self, prefixes: PrefixTokens, *, masks: list[GateMasks]) -> LSTMState:
-        """Read the real events of prefixes `[B, P]` and return the top layer's final state."""
+        """Read the real events of the prefixes.
+
+        Args:
+            prefixes: The prefix tokens.
+            masks: The encoder's dropout masks, one per layer.
+
+        Returns:
+            LSTMState: The top layer's final state.
+        """
         inputs = self.encoder_embedding(prefixes.tokens)  # [B, P] -> [B, P, D]
         positions = torch.arange(end=inputs.size(dim=1), device=inputs.device)
         advancing = positions.unsqueeze(dim=0) < prefixes.lengths.unsqueeze(dim=1)  # [B, P]
@@ -158,6 +187,14 @@ class UEDLSTM(nn.Module):
         return self._logits(outputs), states
 
     def _logits(self, outputs: Float[torch.Tensor, 'B 1 H']) -> GaussianLogits:
+        """The logit distribution of the next event, from the top decoder layer's outputs.
+
+        Args:
+            outputs: The top decoder layer's hidden state after the step.
+
+        Returns:
+            GaussianLogits: The logits `[B, C]` of the next event.
+        """
         features = outputs.squeeze(dim=1)  # [B, 1, H] -> [B, H]
         return GaussianLogits(
             mean=self.mean_head(features), log_variance=self.log_variance_head(features)
@@ -199,11 +236,21 @@ class UEDLSTM(nn.Module):
     def loss(
         self, logits: GaussianLogits, targets: Int64[torch.Tensor, 'B T'], *, weight_penalty: float
     ) -> Loss:
-        """The full objective: the cross-entropy of the targets `[B, T]` under logits `[B, T, C]`,
-        averaged over `logit_samples` Gaussian logit draws, the positions, and the batch, plus
-        `weight_penalty` times the sum of the squared parameters."""
-        drawn = logits.draw(samples=self.logit_samples)  # [S, B, T, C]
-        classes = _to_classes(targets).expand(self.logit_samples, -1, -1)  # [B, T] -> [S, B, T]
+        """The full objective: the cross-entropy of the targets under the logits, averaged over
+        `logit_samples` Gaussian logit draws, the positions, and the batch, plus `weight_penalty`
+        times the sum of the squared parameters.
+
+        Args:
+            logits: The logits `[B, T, C]` of every target position.
+            targets: The events following each prefix.
+            weight_penalty: The weight of the sum of the squared parameters.
+
+        Returns:
+            Loss: The total to backpropagate and the terms it sums.
+        """
+        drawn = logits.draw(samples=self.logit_samples)  # [samples, B, T, C]
+        # [B, T] -> [samples, B, T]
+        classes = _to_classes(targets).expand(self.logit_samples, -1, -1)
         data = F.cross_entropy(input=drawn.flatten(end_dim=2), target=classes.flatten())
         penalty = weight_penalty * sum(parameter.square().sum() for parameter in self.parameters())
         return Loss(total=data + penalty, data=data.item(), penalty=penalty.item())
@@ -257,14 +304,26 @@ class UEDLSTM(nn.Module):
         return tokens[:, :width].view(batch_size, num_draws, width)
 
     def save(self, directory: Path) -> None:
-        """Write the weights and the constructor arguments into `directory`."""
+        """Write the weights and the constructor arguments.
+
+        Args:
+            directory: The directory written into. Created if it does not exist.
+        """
         directory.mkdir(parents=True, exist_ok=True)
         save_file(self.state_dict(), directory / _WEIGHTS_FILE)
         (directory / _ARGUMENTS_FILE).write_text(json.dumps(self.arguments, indent=2) + '\n')
 
     @classmethod
     def load(cls, directory: Path, *, device: torch.device) -> Self:
-        """Rebuild a model written by `save`."""
+        """Rebuild a model written by `save`.
+
+        Args:
+            directory: The directory `save` wrote into.
+            device: The device the model is loaded onto.
+
+        Returns:
+            UEDLSTM: The model in evaluation mode, on `device`.
+        """
         model = cls(**json.loads((directory / _ARGUMENTS_FILE).read_text()))
         model.load_state_dict(load_file(directory / _WEIGHTS_FILE, device=str(device)))
         return model.to(device).eval()

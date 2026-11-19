@@ -44,7 +44,7 @@ def main(config: CollapseConfig) -> None:
     )
     with step('Taking the medoid of every prefix'):
         collapsed = medoids(load_decoding(source), distance=distance)
-        save_decoding(collapsed, path)
+        save_decoding(collapsed, path=path)
         print(f'  {len(collapsed):,} prefixes', flush=True)
 
 

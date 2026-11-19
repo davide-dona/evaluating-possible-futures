@@ -62,7 +62,16 @@ class Process(ABC):
         pick: Callable[[dict[str, float]], str],
         max_steps: int,
     ) -> tuple[str, ...]:
-        """Extend the prefix with the activity `pick` chooses at every step, until `END`."""
+        """Extend the prefix with the activity `pick` chooses at every step, until `END`.
+
+        Args:
+            prefix: The activities the suffix follows.
+            pick: Chooses the next activity from the probability of every activity.
+            max_steps: The most activities the suffix holds.
+
+        Returns:
+            tuple[str, ...]: The activities of the suffix.
+        """
         suffix = []
         while len(suffix) < max_steps:
             activity = pick(self.next_activity_probabilities((*prefix, *suffix)))
@@ -108,7 +117,15 @@ class GreedyDecoder(Decoder):
 
 
 def _choose(options: dict[str, float], *, rng: np.random.Generator) -> str:
-    """Draw one of the options with its probability."""
+    """Draw one of the options with its probability.
+
+    Args:
+        options: The probability of every option, keyed by it.
+        rng: Draws the option.
+
+    Returns:
+        str: The option drawn.
+    """
     threshold = rng.random()
     for option, probability in options.items():
         threshold -= probability

@@ -43,7 +43,7 @@ def main(config: SimulateConfig) -> None:
     with step(f'Writing the log to {path}'):
         write_log(
             cases,
-            path,
+            path=path,
             case_key=data.case_key,
             activity_key=data.activity_key,
             timestamp_key=data.timestamp_key,
