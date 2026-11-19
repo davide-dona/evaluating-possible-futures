@@ -8,10 +8,10 @@ from hydra.core.config_store import ConfigStore
 from hydra.utils import instantiate
 from omegaconf import MISSING, OmegaConf
 
+from possible_futures.cases import load_cases
 from possible_futures.datasets.prefix_suffix import PrefixSuffixDataset
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.models.u_ed_lstm import UEDLSTM
-from possible_futures.preprocessing.cases import load_cases
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, format_duration, step
 from possible_futures.runs.paths import Split, model_dir, split_file, vocabulary_file

@@ -19,9 +19,7 @@ CASES_SCHEMA = pa.schema(
 
 @dataclass(frozen=True, slots=True)
 class Case:
-    """A case, consisting of a sequence of activities and timestamps, 
-    as well as the bounds on the prefix lengths that can be taken from the case.
-    """
+    """The activities and timestamps of one case, and the lengths of the prefixes taken from it."""
 
     case_id: str
     activities: tuple[str, ...]
@@ -46,14 +44,41 @@ class Case:
         """Return the duration of the case in days."""
         return (self.end - self.start).total_seconds() / 86_400.0
 
+    def prefix(self, length: int) -> tuple[str, ...]:
+        """The first `length` activities of the case.
+
+        Args:
+            length: The length of the prefix.
+
+        Returns:
+            tuple[str, ...]: The activities of the prefix.
+        """
+        return self.activities[:length]
+
+    def suffix(self, length: int) -> tuple[str, ...]:
+        """The activities following the prefix of `length` activities.
+
+        Args:
+            length: The length of the prefix the suffix follows.
+
+        Returns:
+            tuple[str, ...]: The activities of the suffix.
+        """
+        return self.activities[length:]
+
 
 def num_variants(cases: Sequence[Case]) -> int:
     """The number of distinct variants within the cases."""
     return len({case.activities for case in cases})
 
 
+def num_events(cases: Sequence[Case]) -> int:
+    """The number of events within the cases."""
+    return sum(len(case) for case in cases)
+
+
 def num_activities(cases: Sequence[Case]) -> int:
-    """The number of distinct activities within the cases"""
+    """The number of distinct activities within the cases."""
     return len({activity for case in cases for activity in case.activities})
 
 

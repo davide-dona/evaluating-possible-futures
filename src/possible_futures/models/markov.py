@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Self
 
+from possible_futures.cases import Case
 from possible_futures.models.process import END, Process
 
 
@@ -17,12 +18,20 @@ class MarkovChain(Process):
     successors: dict[str, dict[str, float]]
 
     @classmethod
-    def fit(cls, traces: Sequence[tuple[str, ...]]) -> Self:
-        """Count the transitions between consecutive activities of every trace, the last
-        activity followed by `END`."""
+    def fit(cls, cases: Sequence[Case]) -> Self:
+        """Count the transitions between consecutive activities of every case, the last
+        activity followed by `END`.
+
+        Args:
+            cases: The train cases.
+
+        Returns:
+            MarkovChain: The chain of the transition frequencies.
+        """
         counts: defaultdict[str, Counter[str]] = defaultdict(Counter)
-        for trace in traces:
-            for activity, following in zip(trace, (*trace[1:], END), strict=True):
+        for case in cases:
+            activities = case.activities
+            for activity, following in zip(activities, (*activities[1:], END), strict=True):
                 counts[activity][following] += 1
         return cls(
             successors={

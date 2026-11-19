@@ -2,11 +2,12 @@ import json
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
-from itertools import chain
 from pathlib import Path
 from typing import Self
 
 import numpy as np
+
+from possible_futures.cases import Case
 
 
 class SpecialToken(IntEnum):
@@ -40,9 +41,16 @@ class Vocabulary:
         )
 
     @classmethod
-    def fit(cls, traces: Sequence[tuple[str, ...]]) -> Self:
-        """Collect the activities of the train traces."""
-        return cls(activities=tuple(sorted(set(chain.from_iterable(traces)))))
+    def fit(cls, cases: Sequence[Case]) -> Self:
+        """Collect the activities of the cases.
+
+        Args:
+            cases: The train cases.
+
+        Returns:
+            Vocabulary: The vocabulary of every activity the cases hold.
+        """
+        return cls(activities=tuple(sorted({a for case in cases for a in case.activities})))
 
     @property
     def size(self) -> int:
@@ -62,16 +70,21 @@ class Vocabulary:
         )
 
     def save(self, path: Path) -> None:
-        """Write the activities to a JSON file, for later loading.
-        args:
-            path: The path to the JSON file.
+        """Write the activities to a JSON file.
+
+        Args:
+            path: The JSON file written.
         """
         path.write_text(json.dumps({'activities': list(self.activities)}, indent=2) + '\n')
 
     @classmethod
     def load(cls, path: Path) -> Self:
-        """Load the activities from a JSON file, for later encoding.
-        args:
-            path: The path to the JSON file.
+        """Read the activities from a JSON file.
+
+        Args:
+            path: The JSON file read.
+
+        Returns:
+            Vocabulary: The vocabulary of the activities read.
         """
         return cls(activities=tuple(json.loads(path.read_text())['activities']))

@@ -6,10 +6,10 @@ from hydra.core.config_store import ConfigStore
 from hydra.utils import instantiate
 from omegaconf import MISSING
 
+from possible_futures.cases import load_cases
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.evaluation.scoring import mean_scores, save_scores
 from possible_futures.inference.draws import Decoding
-from possible_futures.preprocessing.cases import load_cases
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import (

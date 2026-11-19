@@ -5,8 +5,9 @@ import pandas as pd
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
+from possible_futures.cases import load_cases
 from possible_futures.evaluation.scoring import load_scores
-from possible_futures.preprocessing.cases import load_cases, num_prefixes
+from possible_futures.preprocessing.splitting import OutOfTimeSplit
 from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import OUTPUTS, Split, scores_file, split_file
 from possible_futures.tables import MetricColumn, properties_table, scores_table
@@ -67,13 +68,14 @@ def main(config: TablesConfig) -> None:
             path.write_text(scores_table(means, decodings=decodings, metrics=metrics))
     path = output / 'properties.tex'
     with step(f'Writing {path}'):
-        cases, num_test_prefixes = {}, {}
-        for dataset in config.properties:
-            name = config.datasets[dataset]
-            test = load_cases(split_file(dataset, Split.TEST))
-            cases[name] = load_cases(split_file(dataset, Split.TRAIN)) + test
-            num_test_prefixes[name] = num_prefixes(test)
-        path.write_text(properties_table(cases, num_test_prefixes=num_test_prefixes))
+        splits = {
+            config.datasets[dataset]: OutOfTimeSplit(
+                train=load_cases(split_file(dataset, Split.TRAIN)),
+                test=load_cases(split_file(dataset, Split.TEST)),
+            )
+            for dataset in config.properties
+        }
+        path.write_text(properties_table(splits))
 
 
 if __name__ == '__main__':

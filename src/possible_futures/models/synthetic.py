@@ -1,21 +1,14 @@
 from dataclasses import dataclass
-from typing import ClassVar, NamedTuple
+from typing import ClassVar
 
 import numpy as np
 import pandas as pd
 
+from possible_futures.cases import Case
 from possible_futures.models.process import END, Process
 
 # When the first simulated case starts.
 _ORIGIN = pd.Timestamp('2026-01-01')
-
-
-class SimulatedEvents(NamedTuple):
-    """The events of a simulated log, in case order."""
-
-    case_ids: list[str]
-    activities: list[str]
-    timestamps: list[pd.Timestamp]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -62,20 +55,31 @@ class SyntheticProcess(Process):
             case _:
                 return {END: 1.0}
 
-    def simulate(self, *, num_cases: int, rng: np.random.Generator) -> SimulatedEvents:
-        """Draw the events of `num_cases` cases from the process."""
-        # Simulate trace arrival times as a Poisson process
-        arrivals = np.cumsum(rng.exponential(1.0, size=num_cases))
-        case_starts = _ORIGIN + pd.to_timedelta(arrivals, unit='h')
+    def simulate(self, *, num_cases: int, rng: np.random.Generator) -> list[Case]:
+        """Draw cases from the process, starting as a Poisson process of one case per hour and
+        one event per hour within a case.
 
-        # Simulate the events of every case
-        events = SimulatedEvents(case_ids=[], activities=[], timestamps=[])
-        for number, start in enumerate(case_starts):
-            # Simulate the trace of the case
-            trace = self.sample_suffix((), rng=rng, max_steps=self.CASE_LENGTH)
-            # Assign case id and timestamps to every event of the trace
-            for position, activity in enumerate(trace):
-                events.case_ids.append(f'case-{number:05d}')
-                events.activities.append(activity)
-                events.timestamps.append(start + pd.Timedelta(hours=position))
-        return events
+        Args:
+            num_cases: The number of cases drawn.
+            rng: Draws the start and the activities of every case.
+
+        Returns:
+            list[Case]: The cases in order of their start, each with every prefix that leaves a
+                non-empty suffix.
+        """
+        arrivals = np.cumsum(rng.exponential(1.0, size=num_cases))
+        starts = _ORIGIN + pd.to_timedelta(arrivals, unit='h')
+        cases = []
+        for number, start in enumerate(starts):
+            activities = self.sample_suffix((), rng=rng, max_steps=self.CASE_LENGTH)
+            cases.append(
+                Case(
+                    case_id=f'case-{number:05d}',
+                    activities=activities,
+                    timestamps=tuple(
+                        start + pd.Timedelta(hours=position) for position in range(len(activities))
+                    ),
+                    prefix_lengths=range(1, len(activities)),
+                )
+            )
+        return cases

@@ -2,14 +2,15 @@ from dataclasses import dataclass
 
 import hydra
 import numpy as np
-import pandas as pd
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
+from possible_futures.cases import num_events
+from possible_futures.models.synthetic import SyntheticProcess
+from possible_futures.preprocessing.log import write_log
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import original_log_file
-from possible_futures.synthetic import SyntheticProcess
 
 
 @dataclass
@@ -37,18 +38,17 @@ def main(config: SimulateConfig) -> None:
     )
     with step('Drawing the cases'):
         rng = np.random.default_rng(data.simulation_seed)
-        events = process.simulate(num_cases=data.num_cases, rng=rng)
-        log = pd.DataFrame(
-            {
-                data.case_key: events.case_ids,
-                data.activity_key: events.activities,
-                data.timestamp_key: events.timestamps,
-            }
-        )
-        print(f'  {len(log):,} events over {data.num_cases:,} cases', flush=True)
+        cases = process.simulate(num_cases=data.num_cases, rng=rng)
+        print(f'  {num_events(cases):,} events over {len(cases):,} cases', flush=True)
     with step(f'Writing the log to {path}'):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        log.to_csv(path, sep=data.separator, index=False)
+        write_log(
+            cases,
+            path,
+            case_key=data.case_key,
+            activity_key=data.activity_key,
+            timestamp_key=data.timestamp_key,
+            separator=data.separator,
+        )
 
 
 if __name__ == '__main__':

@@ -4,8 +4,8 @@ from typing import NamedTuple
 import torch
 from torch.utils.data import Dataset
 
+from possible_futures.cases import Case
 from possible_futures.datasets.vocabulary import Vocabulary
-from possible_futures.preprocessing.cases import Case
 
 
 class PrefixSuffix(NamedTuple):

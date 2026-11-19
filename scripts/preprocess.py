@@ -6,14 +6,15 @@ import pandas as pd
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
-from possible_futures.datasets.vocabulary import Vocabulary
-from possible_futures.preprocessing.cases import (
+from possible_futures.cases import (
     Case,
     num_activities,
+    num_events,
     num_prefixes,
     num_variants,
     save_cases,
 )
+from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.preprocessing.log import drop_outliers, read_log
 from possible_futures.preprocessing.splitting import OutOfTimeSplit
 from possible_futures.runs.configs import DataConfig
@@ -56,7 +57,7 @@ def main(config: PreprocessConfig) -> None:
             timestamp_key=data.timestamp_key,
             separator=data.separator,
         )
-        print(f'  {sum(map(len, cases)):,} events over {len(cases):,} cases', flush=True)
+        print(f'  {num_events(cases):,} events over {len(cases):,} cases', flush=True)
 
     max_duration_days = float(
         np.percentile([case.duration_days for case in cases], q=split.max_case_duration_percentile)
@@ -82,7 +83,7 @@ def main(config: PreprocessConfig) -> None:
     with step('Writing the splits and the vocabulary'):
         save_cases(splits.train, path=split_file(data.name, Split.TRAIN))
         save_cases(splits.test, path=split_file(data.name, Split.TEST))
-        vocabulary = Vocabulary.fit([case.activities for case in splits.train])
+        vocabulary = Vocabulary.fit(splits.train)
         vocabulary.save(vocabulary_file(data.name))
 
     summary = pd.DataFrame(
@@ -105,7 +106,7 @@ def _describe(cases: list[Case]) -> dict[str, str]:
     lengths = np.array([len(case) for case in cases])
     return {
         'cases': f'{len(cases):,}',
-        'events': f'{lengths.sum():,}',
+        'events': f'{num_events(cases):,}',
         'prefixes': f'{num_prefixes(cases):,}',
         'variants': f'{num_variants(cases):,}',
         'activities': f'{num_activities(cases)}',

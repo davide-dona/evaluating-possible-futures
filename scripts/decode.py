@@ -7,15 +7,16 @@ import torch
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
+from possible_futures.cases import Case, load_cases
 from possible_futures.datasets.prefix_suffix import PrefixSuffixDataset
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.inference.decode import write_draws
 from possible_futures.models.decoder import Decoder
 from possible_futures.models.markov import MarkovChain
 from possible_futures.models.process import GreedyDecoder, SamplingDecoder
+from possible_futures.models.synthetic import SyntheticProcess
 from possible_futures.models.u_ed_lstm import UEDLSTM
 from possible_futures.models.unconditional import UnconditionalDecoder
-from possible_futures.preprocessing.cases import Case, load_cases
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import (
@@ -25,7 +26,6 @@ from possible_futures.runs.paths import (
     split_file,
     vocabulary_file,
 )
-from possible_futures.synthetic import SyntheticProcess
 
 
 class DecoderModel(StrEnum):
@@ -127,7 +127,7 @@ def build_decoder(
             )
         case DecoderModel.ORACLE | DecoderModel.MARKOV, strategy:
             if config.model is DecoderModel.MARKOV:
-                process = MarkovChain.fit([case.activities for case in train])
+                process = MarkovChain.fit(train)
             elif data.process is None:
                 raise ValueError(f'"{data.name}" is not simulated, so it has no oracle')
             else:

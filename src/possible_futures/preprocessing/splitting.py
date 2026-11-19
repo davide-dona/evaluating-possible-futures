@@ -4,7 +4,7 @@ from typing import Self
 
 import pandas as pd
 
-from possible_futures.preprocessing.cases import Case
+from possible_futures.cases import Case
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,8 +17,8 @@ class OutOfTimeSplit:
     @classmethod
     def of(cls, cases: Sequence[Case], *, test_fraction: float, end_window_days: float) -> Self:
         """Drop the cases starting in the last `end_window_days` of the log. The separation
-        time is computed as the start of the case at the `1 - test_fraction` quantile of the 
-        kept cases. 
+        time is computed as the start of the case at the `1 - test_fraction` quantile of the
+        kept cases.
 
         Train keeps the cases that end before the separation, with all their prefixes. Test keeps
         the cases that end at or after it, with only their scored prefixes. A prefix is scored
@@ -43,12 +43,12 @@ class OutOfTimeSplit:
         # Compute the separation time as the start of the first test case
         first_test_case = int(len(kept) * (1 - test_fraction))
         separation = kept[first_test_case].start
-        
+
         return cls(
             # Train keeps the cases that end before the separation, with all their prefixes.
             train=[case for case in kept if case.end < separation],
             test=[
-                # Test keeps the cases that end at or after the separation, with only their scored prefixes.
+                # Test keeps cases ending at or after the separation, with only the scored prefixes.
                 replace(
                     case,
                     prefix_lengths=_scored_lengths(

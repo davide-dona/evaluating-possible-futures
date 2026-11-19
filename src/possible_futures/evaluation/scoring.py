@@ -7,10 +7,10 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from possible_futures.cases import Case
 from possible_futures.datasets.vocabulary import Vocabulary
 from possible_futures.evaluation.metrics import Metric
 from possible_futures.inference.draws import Decoding
-from possible_futures.preprocessing.cases import Case
 
 
 def mean_scores(
@@ -38,9 +38,7 @@ def mean_scores(
     forecasts = decoding.forecasts
     draws = [forecast.draws for forecast in forecasts]
     observed = [
-        tuple(
-            vocabulary.encode(cases[forecast.case_id].activities[forecast.prefix_length :]).tolist()
-        )
+        tuple(vocabulary.encode(cases[forecast.case_id].suffix(forecast.prefix_length)).tolist())
         for forecast in forecasts
     ]
     chunksize = max(1, len(forecasts) // (16 * workers))

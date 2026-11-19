@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from possible_futures.preprocessing.cases import Case
+from possible_futures.cases import Case
 
 
 def read_log(
@@ -42,6 +42,36 @@ def read_log(
             cases.index, cases[activity_key], cases[timestamp_key], strict=True
         )
     ]
+
+
+def write_log(
+    cases: Sequence[Case],
+    path: Path,
+    *,
+    case_key: str,
+    activity_key: str,
+    timestamp_key: str,
+    separator: str,
+) -> None:
+    """Write the events of the cases to a CSV log file, one row per event, case after case.
+
+    Args:
+        cases: The cases written.
+        path: The CSV file written. Creates the parent directories if they do not exist.
+        case_key: The name of the column of the case IDs.
+        activity_key: The name of the column of the activity names.
+        timestamp_key: The name of the column of the timestamps.
+        separator: The separator of the CSV file.
+    """
+    events = pd.DataFrame(
+        {
+            case_key: [case.case_id for case in cases for _ in case.activities],
+            activity_key: [activity for case in cases for activity in case.activities],
+            timestamp_key: [timestamp for case in cases for timestamp in case.timestamps],
+        }
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    events.to_csv(path, sep=separator, index=False)
 
 
 def drop_outliers(

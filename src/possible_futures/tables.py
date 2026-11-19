@@ -1,10 +1,11 @@
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 
-from possible_futures.preprocessing.cases import Case, num_activities, num_variants
+from possible_futures.cases import num_activities, num_events, num_prefixes, num_variants
+from possible_futures.preprocessing.splitting import OutOfTimeSplit
 
 DECIMALS = 3
 
@@ -67,15 +68,12 @@ def scores_table(
     return '\n'.join(lines)
 
 
-def properties_table(
-    cases: Mapping[str, Sequence[Case]], *, num_test_prefixes: Mapping[str, int]
-) -> str:
+def properties_table(splits: Mapping[str, OutOfTimeSplit]) -> str:
     """A booktabs `tabular` of the size and case lengths of every log and its test prefixes.
 
     Args:
-        cases: The train and test cases of every preprocessed log, keyed by the name the table
+        splits: The train and test cases of every preprocessed log, keyed by the name the table
             prints.
-        num_test_prefixes: The number of scored test prefixes of every log, keyed the same way.
 
     Returns:
         The table, to `\\input` inside a `table` environment.
@@ -87,16 +85,17 @@ def properties_table(
         r' & Test prefixes \\',
         r'\midrule',
     ]
-    for name, log in cases.items():
+    for name, split in splits.items():
+        log = split.train + split.test
         lengths = np.array([len(case) for case in log])
         cells = [
             name,
             _grouped_digits(len(log)),
-            _grouped_digits(int(lengths.sum())),
+            _grouped_digits(num_events(log)),
             _grouped_digits(num_variants(log)),
             _grouped_digits(num_activities(log)),
             f'{lengths.mean():.1f}+{lengths.std(ddof=1):.1f}',
-            _grouped_digits(num_test_prefixes[name]),
+            _grouped_digits(num_prefixes(split.test)),
         ]
         lines.append(' & '.join(cells) + r' \\')
     lines += [r'\bottomrule', r'\end{tabular}', '']
