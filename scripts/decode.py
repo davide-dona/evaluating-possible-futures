@@ -8,7 +8,7 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
 from possible_futures.cases import Case, load_cases
-from possible_futures.datasets.vocabulary import Vocabulary
+from possible_futures.datasets.tokenizer import Tokenizer
 from possible_futures.inference.decode import write_decoding
 from possible_futures.models.decoder import Decoder
 from possible_futures.models.markov import MarkovChain
@@ -23,7 +23,7 @@ from possible_futures.runs.paths import (
     decoding_file,
     model_dir,
     split_file,
-    vocabulary_file,
+    tokenizer_file,
 )
 
 
@@ -112,7 +112,7 @@ def build_decoder(
         case DecoderModel.U_ED_LSTM, Strategy.SAMPLED:
             return UEDLSTMDecoder(
                 model=UEDLSTM.load(model_dir(data.name), device=device),
-                vocabulary=Vocabulary.load(vocabulary_file(data.name)),
+                tokenizer=Tokenizer.load(tokenizer_file(data.name)),
                 device=device,
             )
         case DecoderModel.UNCONDITIONAL, Strategy.SAMPLED:

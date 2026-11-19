@@ -12,7 +12,7 @@ from possible_futures.cases import Case
 
 
 class SpecialToken(IntEnum):
-    """The tokens the vocabulary reserves ahead of the activities."""
+    """The tokens the tokenizer reserves ahead of the activities."""
 
     # Padding token, fills sequences to the same length for batching.
     PAD = 0
@@ -27,7 +27,7 @@ class SpecialToken(IntEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class Vocabulary:
+class Tokenizer:
     """Defines the mapping from activities to tokens, including special tokens."""
 
     # The activities of the train split, sorted.
@@ -49,7 +49,7 @@ class Vocabulary:
             cases: The train cases.
 
         Returns:
-            Vocabulary: The vocabulary of every activity the cases hold.
+            Tokenizer: The tokenizer of every activity the cases hold.
         """
         return cls(activities=tuple(sorted({a for case in cases for a in case.activities})))
 
@@ -93,6 +93,6 @@ class Vocabulary:
             path: The JSON file read.
 
         Returns:
-            Vocabulary: The vocabulary of the activities read.
+            Tokenizer: The tokenizer of the activities read.
         """
         return cls(activities=tuple(json.loads(path.read_text())['activities']))

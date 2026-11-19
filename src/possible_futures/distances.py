@@ -7,7 +7,7 @@ from jaxtyping import Float64
 from rapidfuzz import process
 from rapidfuzz.distance import DamerauLevenshtein
 
-from possible_futures.datasets.vocabulary import SpecialToken
+from possible_futures.datasets.tokenizer import SpecialToken
 
 
 class Distance(Protocol):

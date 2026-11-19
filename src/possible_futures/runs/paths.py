@@ -29,8 +29,8 @@ def split_file(dataset: str, split: Split) -> Path:
     return DATA / dataset / 'processed' / f'{split}.parquet'
 
 
-def vocabulary_file(dataset: str) -> Path:
-    return DATA / dataset / 'processed' / 'vocabulary.json'
+def tokenizer_file(dataset: str) -> Path:
+    return DATA / dataset / 'processed' / 'tokenizer.json'
 
 
 def stage_dir(dataset: str, stage: Stage) -> Path:

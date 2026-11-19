@@ -14,7 +14,7 @@ from possible_futures.cases import (
     num_variants,
     save_cases,
 )
-from possible_futures.datasets.vocabulary import Vocabulary
+from possible_futures.datasets.tokenizer import Tokenizer
 from possible_futures.preprocessing.log import drop_outliers, read_log
 from possible_futures.preprocessing.splitting import OutOfTimeSplit
 from possible_futures.runs.configs import DataConfig
@@ -23,7 +23,7 @@ from possible_futures.runs.paths import (
     Split,
     original_log_file,
     split_file,
-    vocabulary_file,
+    tokenizer_file,
 )
 
 
@@ -37,7 +37,7 @@ ConfigStore.instance().store(name='preprocess_schema', node=PreprocessConfig)
 
 @hydra.main(version_base='1.3', config_path='../config', config_name='preprocess')
 def main(config: PreprocessConfig) -> None:
-    """Filter and split a raw log, pick its scored test prefixes, and fit the vocabulary."""
+    """Filter and split a raw log, pick its scored test prefixes, and fit the tokenizer."""
     data = config.data
     split = data.split
     banner(
@@ -80,11 +80,11 @@ def main(config: PreprocessConfig) -> None:
         )
         _report_dropped(read=len(kept), kept=len(splits.train) + len(splits.test))
 
-    with step('Writing the splits and the vocabulary'):
+    with step('Writing the splits and the tokenizer'):
         save_cases(splits.train, path=split_file(data.name, Split.TRAIN))
         save_cases(splits.test, path=split_file(data.name, Split.TEST))
-        vocabulary = Vocabulary.fit(splits.train)
-        vocabulary.save(vocabulary_file(data.name))
+        tokenizer = Tokenizer.fit(splits.train)
+        tokenizer.save(tokenizer_file(data.name))
 
     summary = pd.DataFrame(
         {
@@ -93,7 +93,7 @@ def main(config: PreprocessConfig) -> None:
         }
     ).T
     print(
-        f'\nPreprocessed "{data.name}": {len(vocabulary.activities)} train activities, cases of '
+        f'\nPreprocessed "{data.name}": {len(tokenizer.activities)} train activities, cases of '
         f'at most {max_length} events and {max_duration_days:,.1f} days\n'
         f'{summary.to_string()}\n'
         'Train counts every prefix with a non-empty suffix, test only the scored ones.',

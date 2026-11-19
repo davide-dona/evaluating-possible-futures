@@ -7,7 +7,7 @@ from jaxtyping import Int64
 from torch.nn.utils.rnn import pad_sequence
 
 from possible_futures.datasets.prefix_suffix import PrefixSuffix
-from possible_futures.datasets.vocabulary import SpecialToken
+from possible_futures.datasets.tokenizer import SpecialToken
 
 
 class PrefixTokens(NamedTuple):

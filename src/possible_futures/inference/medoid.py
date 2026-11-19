@@ -1,7 +1,7 @@
 from collections import Counter
 from collections.abc import Sequence
 
-from possible_futures.datasets.vocabulary import Vocabulary
+from possible_futures.datasets.tokenizer import Tokenizer
 from possible_futures.distances import Distance
 from possible_futures.inference.decoding import Forecast
 
@@ -25,13 +25,13 @@ def medoid_index(draws: Sequence[tuple[int, ...]], *, distance: Distance) -> int
 
 
 def medoids(
-    forecasts: Sequence[Forecast], *, vocabulary: Vocabulary, distance: Distance
+    forecasts: Sequence[Forecast], *, tokenizer: Tokenizer, distance: Distance
 ) -> list[Forecast]:
     """Keep only the medoid of the draws of every forecast.
 
     Args:
         forecasts: The forecasts collapsed.
-        vocabulary: Maps the activities of the draws to tokens.
+        tokenizer: Maps the activities of the draws to tokens.
         distance: The distance the medoid is taken under.
 
     Returns:
@@ -39,7 +39,7 @@ def medoids(
     """
     collapsed = []
     for forecast in forecasts:
-        tokens = [tuple(vocabulary.encode(draw).tolist()) for draw in forecast.draws]
+        tokens = [tuple(tokenizer.encode(draw).tolist()) for draw in forecast.draws]
         medoid = forecast.draws[medoid_index(tokens, distance=distance)]
         collapsed.append(
             Forecast(case_id=forecast.case_id, prefix_length=forecast.prefix_length, draws=[medoid])

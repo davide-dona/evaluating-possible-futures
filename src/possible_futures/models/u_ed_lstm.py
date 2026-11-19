@@ -12,7 +12,7 @@ from safetensors.torch import load_file, save_file
 from torch import nn
 
 from possible_futures.datasets.collation import PrefixTokens
-from possible_futures.datasets.vocabulary import SpecialToken, Vocabulary
+from possible_futures.datasets.tokenizer import SpecialToken, Tokenizer
 from possible_futures.models.decoder import Decoder
 from possible_futures.models.lstm import GateDropoutStack, GateMasks, LSTMState
 
@@ -334,17 +334,17 @@ class UEDLSTMDecoder(Decoder):
     """Draws suffixes from a U-ED-LSTM, mapping activities to its tokens and back."""
 
     model: UEDLSTM
-    vocabulary: Vocabulary  # the vocabulary the model was trained on
+    tokenizer: Tokenizer  # the tokenizer the model was trained on
     device: torch.device  # the device of the model
 
     def draw(
         self, prefixes: Sequence[tuple[str, ...]], *, num_draws: int, max_steps: int
     ) -> list[list[tuple[str, ...]]]:
-        tokens = PrefixTokens.pad([torch.from_numpy(self.vocabulary.encode(p)) for p in prefixes])
+        tokens = PrefixTokens.pad([torch.from_numpy(self.tokenizer.encode(p)) for p in prefixes])
         drawn = self.model.draw(tokens.to(self.device), num_draws=num_draws, max_steps=max_steps)
         rows = drawn.flatten(end_dim=1).cpu().numpy()  # [B, S, L] -> [B * S, L]
         lengths = (rows != SpecialToken.PAD).sum(axis=1)
-        labels = np.array(self.vocabulary.labels, dtype=object)
+        labels = np.array(self.tokenizer.labels, dtype=object)
         suffixes = [
             tuple(labels[row[:length]].tolist()) for row, length in zip(rows, lengths, strict=True)
         ]

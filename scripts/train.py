@@ -10,11 +10,11 @@ from omegaconf import MISSING, OmegaConf
 
 from possible_futures.cases import load_cases
 from possible_futures.datasets.prefix_suffix import PrefixSuffixDataset
-from possible_futures.datasets.vocabulary import Vocabulary
+from possible_futures.datasets.tokenizer import Tokenizer
 from possible_futures.models.u_ed_lstm import UEDLSTM
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, format_duration, step
-from possible_futures.runs.paths import Split, model_dir, split_file, vocabulary_file
+from possible_futures.runs.paths import Split, model_dir, split_file, tokenizer_file
 from possible_futures.training.train import TeacherForcing, train
 
 
@@ -70,12 +70,12 @@ def main(config: TrainConfig) -> None:
         },
     )
     with step('Loading the train prefixes'):
-        vocabulary = Vocabulary.load(vocabulary_file(name))
+        tokenizer = Tokenizer.load(tokenizer_file(name))
         dataset = PrefixSuffixDataset(
-            load_cases(split_file(name, Split.TRAIN)), vocabulary=vocabulary
+            load_cases(split_file(name, Split.TRAIN)), tokenizer=tokenizer
         )
 
-    model = UEDLSTM(vocabulary_size=vocabulary.size, **config.model).to(device)
+    model = UEDLSTM(vocabulary_size=tokenizer.size, **config.model).to(device)
     print(f'{sum(p.numel() for p in model.parameters()):,} parameters', flush=True)
 
     optimizer = instantiate(config.optimizer)(params=model.parameters())

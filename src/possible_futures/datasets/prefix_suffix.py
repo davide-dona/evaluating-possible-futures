@@ -6,7 +6,7 @@ from jaxtyping import Int64
 from torch.utils.data import Dataset
 
 from possible_futures.cases import Case
-from possible_futures.datasets.vocabulary import Vocabulary
+from possible_futures.datasets.tokenizer import Tokenizer
 
 
 class PrefixSuffix(NamedTuple):
@@ -20,14 +20,14 @@ class PrefixSuffixDataset(Dataset[PrefixSuffix]):
     """Every prefix of some cases with the suffix following it, as tokens, every case encoded
     once and shared by its prefixes and suffixes."""
 
-    def __init__(self, cases: Sequence[Case], vocabulary: Vocabulary) -> None:
+    def __init__(self, cases: Sequence[Case], tokenizer: Tokenizer) -> None:
         """Encode the cases and index their prefixes.
 
         Args:
             cases: The cases, each with the lengths of its prefixes.
-            vocabulary: Maps the activities to tokens.
+            tokenizer: Maps the activities to tokens.
         """
-        self.case_tokens = [torch.from_numpy(vocabulary.encode(case.activities)) for case in cases]
+        self.case_tokens = [torch.from_numpy(tokenizer.encode(case.activities)) for case in cases]
         # One row per prefix, its case's position in `cases` and its length, [N, 2] also when N
         # is 0. The prefixes follow the cases, shortest first within a case.
         self.index = torch.tensor(
