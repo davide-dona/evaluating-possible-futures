@@ -23,17 +23,6 @@ class Encoder(nn.Module):
         self.embedding = embedding
         self.lstm = lstm
 
-    def sample_masks(self, rows: int) -> list[DropoutMasks]:
-        """Sample the dropout masks of every layer, bottom first.
-
-        Args:
-            rows: The number of rows, each with its own masks.
-
-        Returns:
-            list[DropoutMasks]: The masks of every layer.
-        """
-        return self.lstm.sample_masks(rows)
-
     def forward(self, prefixes: PrefixTokens, *, masks: list[DropoutMasks]) -> LSTMState:
         """Read the real tokens of the prefixes.
 

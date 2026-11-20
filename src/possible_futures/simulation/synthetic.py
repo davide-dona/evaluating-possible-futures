@@ -4,8 +4,8 @@ from typing import ClassVar
 import numpy as np
 import pandas as pd
 
-from possible_futures.datasets.cases import Case
-from possible_futures.forecasters.next_activity import END, NextActivityDistribution
+from possible_futures.cases import Activities, Case
+from possible_futures.next_activity import END, NextActivityDistribution
 
 # When the first simulated case starts.
 _ORIGIN = pd.Timestamp('2026-01-01')
@@ -38,7 +38,7 @@ class SyntheticProcess(NextActivityDistribution):
     def __str__(self) -> str:
         return f'P(B | A) = {self.p_b}, P(E | B, D) = {self.q_b}, P(E | C, D) = {self.q_c}'
 
-    def next_activity_probabilities(self, prefix: tuple[str, ...]) -> dict[str, float]:
+    def next_activity_probabilities(self, prefix: Activities) -> dict[str, float]:
         """The true probability of every activity, or of `END`, right after `prefix`.
 
         Args:
@@ -71,8 +71,7 @@ class SyntheticProcess(NextActivityDistribution):
             rng: Samples the start and the activities of every case.
 
         Returns:
-            list[Case]: The cases in order of their start, each with every prefix that leaves a
-                non-empty suffix.
+            list[Case]: The cases in order of their start.
         """
         arrivals = np.cumsum(rng.exponential(1.0, size=num_cases))
         starts = _ORIGIN + pd.to_timedelta(arrivals, unit='h')
@@ -86,7 +85,6 @@ class SyntheticProcess(NextActivityDistribution):
                     timestamps=tuple(
                         start + pd.Timedelta(hours=position) for position in range(len(activities))
                     ),
-                    prefix_lengths=range(1, len(activities)),
                 )
             )
         return cases

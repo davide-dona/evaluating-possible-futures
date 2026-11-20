@@ -105,7 +105,7 @@ class GaussianHead(nn.Module):
         super().__init__()
         self.mean = nn.Linear(in_features=hidden_size, out_features=vocabulary_size)
         self.log_variance = nn.Linear(in_features=hidden_size, out_features=vocabulary_size)
-        blocked = [token for token in SpecialToken if not token.is_output]
+        blocked = [token for token in SpecialToken if not token.generated]
         self.register_buffer(
             name='blocked', tensor=torch.tensor(blocked, dtype=torch.int64), persistent=False
         )

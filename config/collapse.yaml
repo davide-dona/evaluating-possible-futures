@@ -7,6 +7,8 @@ defaults:
 forecasts: sampled
 # The name of the collapsed forecasts, the stem of their file.
 output: medoid
+# The most draws held in memory at once.
+max_rows: 1000000
 # The distance the medoid of the draws of a prefix is taken under.
 distance:
   _target_: possible_futures.distances.NormalizedDamerauLevenshtein

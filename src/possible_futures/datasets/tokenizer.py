@@ -9,18 +9,31 @@ import numpy as np
 import torch
 from jaxtyping import Int64
 
-from possible_futures.datasets.cases import Case
+from possible_futures.cases import Activities, Case
 
 
 class SpecialToken(IntEnum):
-    """The tokens the tokenizer reserves ahead of the activities."""
+    """The tokens the tokenizer reserves ahead of the activities.
 
-    # Fills the shorter sequences of a batch up to the length of the longest.
-    PAD = 0
+    Attributes:
+        generated: Whether a model may predict the token.
+    """
+
+    generated: bool
+
+    def __new__(cls, value: int, generated: bool) -> Self:
+        token = int.__new__(cls, value)
+        token._value_ = value
+        token.generated = generated
+        return token
+
+    # Fills the shorter sequences of a batch up to the length of the longest, so no model
+    # predicts it.
+    PAD = 0, False
     # Stands for any activity the train split does not hold.
-    UNK = 1
+    UNK = 1, True
     # Ends a suffix: the decoder emits it when it predicts the case is over.
-    EOS = 2
+    EOS = 2, True
 
     @property
     def label(self) -> str:
@@ -30,16 +43,6 @@ class SpecialToken(IntEnum):
             str: The name of the token in angle brackets.
         """
         return f'<{self.name}>'
-
-    @property
-    def is_output(self) -> bool:
-        """Whether a model may predict this token. PAD only fills batches, so no model predicts
-        it.
-
-        Returns:
-            bool: False for PAD, True for every other token.
-        """
-        return self is not SpecialToken.PAD
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,7 +98,7 @@ class Tokenizer:
         """
         return tuple(token.label for token in SpecialToken) + self.activities
 
-    def known(self, activities: Iterable[str]) -> tuple[str, ...]:
+    def known(self, activities: Iterable[str]) -> Activities:
         """Replace every activity the train split does not hold with the UNK label, so that the
         activities read as the model sees them.
 
@@ -103,7 +106,7 @@ class Tokenizer:
             activities: The activities.
 
         Returns:
-            tuple[str, ...]: The activities, `<UNK>` in place of every unknown one.
+            Activities: The activities, `<UNK>` in place of every unknown one.
         """
         unknown = SpecialToken.UNK.label
         return tuple(activity if activity in self._tokens else unknown for activity in activities)
@@ -122,14 +125,14 @@ class Tokenizer:
             dtype=torch.int64,
         )
 
-    def decode(self, tokens: Int64[torch.Tensor, 'B L']) -> list[tuple[str, ...]]:
+    def decode(self, tokens: Int64[torch.Tensor, 'B L']) -> list[Activities]:
         """Map rows of tokens, each PAD past its end, to their labels.
 
         Args:
             tokens: The tokens of every row.
 
         Returns:
-            list[tuple[str, ...]]: The labels of the tokens of every row, PAD left out.
+            list[Activities]: The labels of the tokens of every row, PAD left out.
         """
         tokens = tokens.cpu()
         lengths = (tokens != SpecialToken.PAD).sum(dim=1).tolist()

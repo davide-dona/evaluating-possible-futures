@@ -6,10 +6,10 @@ from hydra.core.config_store import ConfigStore
 from hydra.utils import instantiate
 from omegaconf import MISSING
 
-from possible_futures.datasets.cases import load_cases
+from possible_futures.cases import load_cases
 from possible_futures.datasets.tokenizer import Tokenizer
 from possible_futures.evaluation.scoring import mean_scores, save_scores
-from possible_futures.forecasters.forecasts import load_forecasts
+from possible_futures.forecasters.forecasts import iter_forecasts
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import (
@@ -29,6 +29,7 @@ class EvaluateConfig:
         data: The dataset.
         forecasts: The name of the forecasts scored, the stem of their file.
         workers: Processes scoring the forecasts in parallel.
+        max_rows: The most draws held in memory at once.
         metrics: The `Metric`s the forecasts are scored with, built with
             `hydra.utils.instantiate`.
     """
@@ -36,6 +37,7 @@ class EvaluateConfig:
     data: DataConfig = MISSING
     forecasts: str = MISSING
     workers: int = MISSING
+    max_rows: int = MISSING
     metrics: list[Any] = field(default_factory=list)
 
 
@@ -63,7 +65,7 @@ def main(config: EvaluateConfig) -> None:
     )
     with step('Scoring every forecast against its observed suffix'):
         means = mean_scores(
-            load_forecasts(path),
+            iter_forecasts(path, max_rows=config.max_rows),
             test=load_cases(split_file(name, Split.TEST)),
             tokenizer=Tokenizer.load(tokenizer_file(name)),
             metrics=metrics,

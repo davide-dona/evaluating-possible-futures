@@ -5,7 +5,7 @@ import numpy as np
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
-from possible_futures.datasets.cases import num_events
+from possible_futures.cases import num_events
 from possible_futures.preprocessing.log import write_log
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step

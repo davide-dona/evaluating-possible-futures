@@ -1,10 +1,10 @@
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Self
 
 import pandas as pd
 
-from possible_futures.datasets.cases import Case
+from possible_futures.cases import Case, ScoredLengths
 
 
 @dataclass(frozen=True, slots=True)
@@ -13,12 +13,14 @@ class OutOfTimeSplit:
     scored on the future.
 
     Attributes:
-        train: The cases that end before the separation, with all their prefixes.
-        test: The cases that end at or after it, each holding only its scored prefixes.
+        train: The cases that end before the separation, every prefix of which is trained on.
+        test: The cases that end at or after it.
+        scored: The lengths of the scored prefixes of the test cases, in order of their start.
     """
 
     train: list[Case]
     test: list[Case]
+    scored: ScoredLengths
 
     @classmethod
     def of(cls, cases: Sequence[Case], *, test_fraction: float, end_window_days: float) -> Self:
@@ -26,10 +28,10 @@ class OutOfTimeSplit:
         time is computed as the start of the case at the `1 - test_fraction` quantile of the
         kept cases.
 
-        Train keeps the cases that end before the separation, with all their prefixes. Test keeps
-        the cases that end at or after it, with only their scored prefixes. A prefix is scored
-        when its last event falls after the separation and no later than the start of the end
-        window, and at least one event of the case follows it.
+        Train keeps the cases that end before the separation. Test keeps the cases that end at or
+        after it. A prefix of a test case is scored when its last event falls after the separation
+        and no later than the start of the end window, and at least one event of the case follows
+        it.
 
         Args:
             cases: The cases of the log.
@@ -38,7 +40,8 @@ class OutOfTimeSplit:
                 are dropped and prefixes are not scored.
 
         Returns:
-            OutOfTimeSplit: The cases of each split, in order of their start.
+            OutOfTimeSplit: The cases of each split, in order of their start, and the scored
+                prefixes of the test cases. A test case with no scored prefix is absent from them.
         """
         # Filter out the cases starting in the last `end_window_days`
         window_start = max(case.end for case in cases) - pd.Timedelta(days=end_window_days)
@@ -50,23 +53,23 @@ class OutOfTimeSplit:
         first_test_case = int(len(kept) * (1 - test_fraction))
         separation = kept[first_test_case].start
 
-        return cls(
-            # Train keeps the cases that end before the separation, with all their prefixes.
-            train=[case for case in kept if case.end < separation],
-            test=[
-                # Test keeps cases ending at or after the separation, with only the scored prefixes.
-                replace(
+        test = [(rank, case) for rank, case in enumerate(kept) if case.end >= separation]
+        scored = {
+            case.case_id: lengths
+            for rank, case in test
+            if (
+                lengths := _scored_lengths(
                     case,
-                    prefix_lengths=_scored_lengths(
-                        case,
-                        separation=separation,
-                        window_start=window_start,
-                        crosses_separation=rank < first_test_case,
-                    ),
+                    separation=separation,
+                    window_start=window_start,
+                    crosses_separation=rank < first_test_case,
                 )
-                for rank, case in enumerate(kept)
-                if case.end >= separation
-            ],
+            )
+        }
+        return cls(
+            train=[case for case in kept if case.end < separation],
+            test=[case for _, case in test],
+            scored=scored,
         )
 
 

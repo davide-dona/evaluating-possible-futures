@@ -5,6 +5,7 @@ from typing import Self
 
 import torch
 
+from possible_futures.cases import Activities
 from possible_futures.datasets.collation import PrefixTokens
 from possible_futures.datasets.tokenizer import Tokenizer
 from possible_futures.forecasters.forecaster import Forecaster
@@ -51,8 +52,8 @@ class UEDLSTMForecaster(Forecaster):
         )
 
     def draw(
-        self, prefixes: Sequence[tuple[str, ...]], *, num_draws: int, max_steps: int
-    ) -> list[list[tuple[str, ...]]]:
+        self, prefixes: Sequence[Activities], *, num_draws: int, max_steps: int
+    ) -> list[list[Activities]]:
         device = next(self.model.parameters()).device
         tokens = PrefixTokens.pad([self.tokenizer.encode(prefix) for prefix in prefixes])
         sampled = self.model.sample_suffixes(

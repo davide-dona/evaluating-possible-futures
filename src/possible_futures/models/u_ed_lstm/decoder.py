@@ -28,17 +28,6 @@ class Decoder(nn.Module):
         self.lstm = lstm
         self.head = head
 
-    def sample_masks(self, rows: int) -> list[DropoutMasks]:
-        """Sample the dropout masks of every layer, bottom first.
-
-        Args:
-            rows: The number of rows, each with its own masks.
-
-        Returns:
-            list[DropoutMasks]: The masks of every layer.
-        """
-        return self.lstm.sample_masks(rows)
-
     def start(
         self, tokens: Int64[torch.Tensor, ' B'], encoded: LSTMState, *, masks: list[DropoutMasks]
     ) -> tuple[GaussianLogits, list[LSTMState]]:

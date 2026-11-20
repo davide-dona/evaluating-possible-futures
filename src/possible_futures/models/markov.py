@@ -3,8 +3,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Self
 
-from possible_futures.datasets.cases import Case
-from possible_futures.forecasters.next_activity import END, NextActivityDistribution
+from possible_futures.cases import Activities, Case
+from possible_futures.next_activity import END, NextActivityDistribution
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +43,7 @@ class MarkovChain(NextActivityDistribution):
             }
         )
 
-    def next_activity_probabilities(self, prefix: tuple[str, ...]) -> dict[str, float]:
+    def next_activity_probabilities(self, prefix: Activities) -> dict[str, float]:
         """The probability of every activity, or of `END`, after the last activity of `prefix`.
 
         Args:

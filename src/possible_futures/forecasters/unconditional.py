@@ -4,7 +4,7 @@ from typing import Self
 
 import numpy as np
 
-from possible_futures.datasets.cases import Case
+from possible_futures.cases import Activities, Case
 from possible_futures.forecasters.forecaster import Forecaster
 
 
@@ -21,7 +21,7 @@ class UnconditionalForecaster(Forecaster):
         rng: Picks the suffixes.
     """
 
-    suffixes: tuple[tuple[str, ...], ...]
+    suffixes: tuple[Activities, ...]
     rng: np.random.Generator
 
     @classmethod
@@ -40,8 +40,8 @@ class UnconditionalForecaster(Forecaster):
         return cls(suffixes=suffixes, rng=rng)
 
     def draw(
-        self, prefixes: Sequence[tuple[str, ...]], *, num_draws: int, max_steps: int
-    ) -> list[list[tuple[str, ...]]]:
+        self, prefixes: Sequence[Activities], *, num_draws: int, max_steps: int
+    ) -> list[list[Activities]]:
         drawn = self.rng.integers(len(self.suffixes), size=len(prefixes) * num_draws).tolist()
         return [
             [self.suffixes[index] for index in drawn[start : start + num_draws]]

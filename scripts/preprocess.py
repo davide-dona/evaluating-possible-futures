@@ -6,13 +6,15 @@ import pandas as pd
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
-from possible_futures.datasets.cases import (
+from possible_futures.cases import (
     Case,
     num_activities,
     num_events,
     num_prefixes,
+    num_scored_prefixes,
     num_variants,
     save_cases,
+    save_scored,
 )
 from possible_futures.datasets.tokenizer import Tokenizer
 from possible_futures.preprocessing.log import drop_outliers, read_log
@@ -22,6 +24,7 @@ from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import (
     Split,
     original_log_file,
+    scored_file,
     split_file,
     tokenizer_file,
 )
@@ -86,16 +89,17 @@ def main(config: PreprocessConfig) -> None:
         )
         _report_dropped(read=len(kept), kept=len(splits.train) + len(splits.test))
 
-    with step('Writing the splits and the tokenizer'):
+    with step('Writing the splits, the scored prefixes and the tokenizer'):
         save_cases(splits.train, path=split_file(data.name, Split.TRAIN))
         save_cases(splits.test, path=split_file(data.name, Split.TEST))
+        save_scored(splits.scored, path=scored_file(data.name))
         tokenizer = Tokenizer.fit(splits.train)
         tokenizer.save(tokenizer_file(data.name))
 
     summary = pd.DataFrame(
         {
-            'train': _describe(splits.train),
-            'test': _describe(splits.test),
+            'train': _describe(splits.train, prefixes=num_prefixes(splits.train)),
+            'test': _describe(splits.test, prefixes=num_scored_prefixes(splits.scored)),
         }
     ).T
     print(
@@ -107,11 +111,12 @@ def main(config: PreprocessConfig) -> None:
     )
 
 
-def _describe(cases: list[Case]) -> dict[str, str]:
+def _describe(cases: list[Case], *, prefixes: int) -> dict[str, str]:
     """Describe the size of a split, its prefixes, and the shape of its cases, for printing.
 
     Args:
         cases: The cases of the split.
+        prefixes: The number of prefixes of the split, trained on or scored.
 
     Returns:
         dict[str, str]: Every statistic, formatted, keyed by its name.
@@ -120,7 +125,7 @@ def _describe(cases: list[Case]) -> dict[str, str]:
     return {
         'cases': f'{len(cases):,}',
         'events': f'{num_events(cases):,}',
-        'prefixes': f'{num_prefixes(cases):,}',
+        'prefixes': f'{prefixes:,}',
         'variants': f'{num_variants(cases):,}',
         'activities': f'{num_activities(cases)}',
         'case length': f'{lengths.mean():.1f} ± {lengths.std(ddof=1):.1f}',

@@ -2,11 +2,12 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import replace
 
+from possible_futures.cases import Activities
 from possible_futures.distances import Distance
 from possible_futures.forecasters.forecasts import Forecast
 
 
-def medoid_index(draws: Sequence[tuple[str, ...]], *, distance: Distance) -> int:
+def medoid_index(draws: Sequence[Activities], *, distance: Distance) -> int:
     """The index of the most central draw: the one with the lowest mean distance to all draws,
     ties going to the lowest in tuple order.
 

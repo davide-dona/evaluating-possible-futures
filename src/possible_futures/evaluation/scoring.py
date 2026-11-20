@@ -1,5 +1,5 @@
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 from pathlib import Path
@@ -7,24 +7,25 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from possible_futures.datasets.cases import Case
+from possible_futures.cases import Activities, Case
 from possible_futures.datasets.tokenizer import Tokenizer
 from possible_futures.evaluation.metrics import Metric
 from possible_futures.forecasters.forecasts import Forecast
 
 
 def mean_scores(
-    forecasts: Sequence[Forecast],
+    chunks: Iterable[Sequence[Forecast]],
     *,
     test: Sequence[Case],
     tokenizer: Tokenizer,
     metrics: Sequence[Metric],
     workers: int,
 ) -> dict[str, float]:
-    """Score every forecast against its observed suffix and average the scores.
+    """Score every forecast against its observed suffix and average the scores, one chunk of
+    forecasts at a time.
 
     Args:
-        forecasts: The forecasts scored.
+        chunks: The forecasts scored, in chunks. Only one chunk is held in memory at once.
         test: The test cases, whose suffixes the forecasts are scored against.
         tokenizer: The tokenizer of the train split. Every observed activity it does not know
             reads as `<UNK>`, the one unknown activity a model can draw.
@@ -36,25 +37,29 @@ def mean_scores(
             name.
     """
     cases = {case.case_id: case for case in test}
-    draws = [forecast.draws for forecast in forecasts]
-    observed = [
-        tokenizer.known(cases[forecast.case_id].suffix(forecast.prefix_length))
-        for forecast in forecasts
-    ]
-    chunksize = max(1, len(forecasts) // (16 * workers))
     score = partial(_scores, metrics=metrics)
+    totals, count = np.zeros(len(metrics)), 0
     # One torch thread per process, so the processes do not oversubscribe the cores.
     with ProcessPoolExecutor(
         max_workers=workers, initializer=torch.set_num_threads, initargs=(1,)
     ) as pool:
-        # One row per forecast, one column per metric
-        scores = np.array(list(pool.map(score, draws, observed, chunksize=chunksize)))
-    means = scores.mean(axis=0).tolist()
+        for forecasts in chunks:
+            draws = [forecast.draws for forecast in forecasts]
+            observed = [
+                tokenizer.known(cases[forecast.case_id].suffix(forecast.prefix_length))
+                for forecast in forecasts
+            ]
+            chunksize = max(1, len(forecasts) // (16 * workers))
+            # One row per forecast, one column per metric
+            scores = np.array(list(pool.map(score, draws, observed, chunksize=chunksize)))
+            totals += scores.sum(axis=0)
+            count += len(forecasts)
+    means = (totals / count).tolist()
     return {metric.name: mean for metric, mean in zip(metrics, means, strict=True)}
 
 
 def _scores(
-    draws: Sequence[tuple[str, ...]], observed: tuple[str, ...], *, metrics: Sequence[Metric]
+    draws: Sequence[Activities], observed: Activities, *, metrics: Sequence[Metric]
 ) -> list[float]:
     """Score the draws of one prefix against its observed suffix under every metric.
 

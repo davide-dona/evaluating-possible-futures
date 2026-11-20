@@ -1,10 +1,9 @@
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable
 
 import numpy as np
 
-from possible_futures.forecasters.forecaster import Forecaster
+from possible_futures.cases import Activities
 
 # The pseudo-activity a distribution gives as the next one when the case is over, the activity-level
 # counterpart of the EOS token.
@@ -16,7 +15,7 @@ class NextActivityDistribution(ABC):
     Suffixes follow from applying it repeatedly."""
 
     @abstractmethod
-    def next_activity_probabilities(self, prefix: tuple[str, ...]) -> dict[str, float]:
+    def next_activity_probabilities(self, prefix: Activities) -> dict[str, float]:
         """The probability of every activity, or of `END`, right after `prefix`.
 
         Args:
@@ -27,8 +26,8 @@ class NextActivityDistribution(ABC):
         """
 
     def sample_suffix(
-        self, prefix: tuple[str, ...], *, rng: np.random.Generator, max_steps: int
-    ) -> tuple[str, ...]:
+        self, prefix: Activities, *, rng: np.random.Generator, max_steps: int
+    ) -> Activities:
         """Sample the activities following `prefix` one at a time until `END`.
 
         Args:
@@ -37,7 +36,7 @@ class NextActivityDistribution(ABC):
             max_steps: The most activities the suffix holds.
 
         Returns:
-            tuple[str, ...]: The activities of the suffix.
+            Activities: The activities of the suffix.
         """
         return self._suffix(
             prefix,
@@ -45,7 +44,7 @@ class NextActivityDistribution(ABC):
             max_steps=max_steps,
         )
 
-    def greedy_suffix(self, prefix: tuple[str, ...], *, max_steps: int) -> tuple[str, ...]:
+    def greedy_suffix(self, prefix: Activities, *, max_steps: int) -> Activities:
         """Take the most likely next activity at every step, until `END`. This is the greedy
         suffix: the most likely activity at each step, not necessarily the most likely suffix
         as a whole.
@@ -55,7 +54,7 @@ class NextActivityDistribution(ABC):
             max_steps: The most activities the suffix holds.
 
         Returns:
-            tuple[str, ...]: The activities of the suffix.
+            Activities: The activities of the suffix.
         """
         return self._suffix(
             prefix, choose=lambda options: max(options, key=options.get), max_steps=max_steps
@@ -63,11 +62,11 @@ class NextActivityDistribution(ABC):
 
     def _suffix(
         self,
-        prefix: tuple[str, ...],
+        prefix: Activities,
         *,
         choose: Callable[[dict[str, float]], str],
         max_steps: int,
-    ) -> tuple[str, ...]:
+    ) -> Activities:
         """Extend the prefix with the activity `choose` picks at every step, until `END`.
 
         Args:
@@ -76,7 +75,7 @@ class NextActivityDistribution(ABC):
             max_steps: The most activities the suffix holds.
 
         Returns:
-            tuple[str, ...]: The activities of the suffix.
+            Activities: The activities of the suffix.
         """
         suffix = []
         while len(suffix) < max_steps:
@@ -85,50 +84,6 @@ class NextActivityDistribution(ABC):
                 break
             suffix.append(activity)
         return tuple(suffix)
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class SamplingForecaster(Forecaster):
-    """Draws every suffix by sampling a distribution one activity at a time.
-
-    Attributes:
-        distribution: The distribution sampled.
-        rng: Samples the activities.
-    """
-
-    distribution: NextActivityDistribution
-    rng: np.random.Generator
-
-    def draw(
-        self, prefixes: Sequence[tuple[str, ...]], *, num_draws: int, max_steps: int
-    ) -> list[list[tuple[str, ...]]]:
-        return [
-            [
-                self.distribution.sample_suffix(prefix, rng=self.rng, max_steps=max_steps)
-                for _ in range(num_draws)
-            ]
-            for prefix in prefixes
-        ]
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class GreedyForecaster(Forecaster):
-    """Continues every prefix with the most likely activity of a distribution at every step, so
-    all draws of a prefix are the same suffix.
-
-    Attributes:
-        distribution: The distribution followed.
-    """
-
-    distribution: NextActivityDistribution
-
-    def draw(
-        self, prefixes: Sequence[tuple[str, ...]], *, num_draws: int, max_steps: int
-    ) -> list[list[tuple[str, ...]]]:
-        return [
-            [self.distribution.greedy_suffix(prefix, max_steps=max_steps)] * num_draws
-            for prefix in prefixes
-        ]
 
 
 def _sample_activity(options: dict[str, float], *, rng: np.random.Generator) -> str:

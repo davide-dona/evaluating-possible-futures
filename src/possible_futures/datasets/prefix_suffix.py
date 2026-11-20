@@ -5,7 +5,7 @@ import torch
 from jaxtyping import Int64
 from torch.utils.data import Dataset
 
-from possible_futures.datasets.cases import Case
+from possible_futures.cases import Case
 from possible_futures.datasets.tokenizer import Tokenizer
 
 
@@ -31,7 +31,7 @@ class PrefixSuffixDataset(Dataset[PrefixSuffix]):
     def __init__(self, cases: Sequence[Case], tokenizer: Tokenizer) -> None:
         """
         Args:
-            cases: The cases, each with the lengths of its prefixes.
+            cases: The cases, every prefix of which is a training example.
             tokenizer: Maps the activities to tokens.
         """
         self.case_tokens = [tokenizer.encode(case.activities) for case in cases]

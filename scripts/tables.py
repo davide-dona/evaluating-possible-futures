@@ -5,12 +5,12 @@ import pandas as pd
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
-from possible_futures.datasets.cases import load_cases
+from possible_futures.cases import load_cases, load_scored
 from possible_futures.evaluation.scoring import load_scores
 from possible_futures.evaluation.tables import MetricColumn, properties_table, scores_table
 from possible_futures.preprocessing.splitting import OutOfTimeSplit
 from possible_futures.runs.console import banner, step
-from possible_futures.runs.paths import OUTPUTS, Split, scores_file, split_file
+from possible_futures.runs.paths import OUTPUTS, Split, scored_file, scores_file, split_file
 
 
 @dataclass
@@ -96,6 +96,7 @@ def main(config: TablesConfig) -> None:
             config.datasets[dataset]: OutOfTimeSplit(
                 train=load_cases(split_file(dataset, Split.TRAIN)),
                 test=load_cases(split_file(dataset, Split.TEST)),
+                scored=load_scored(scored_file(dataset)),
             )
             for dataset in config.properties
         }

@@ -7,12 +7,14 @@ from jaxtyping import Float64
 from rapidfuzz import process
 from rapidfuzz.distance import DamerauLevenshtein
 
+from possible_futures.cases import Activities
+
 
 class Distance(Protocol):
     """A distance between suffixes, each a tuple of activities."""
 
     def __call__(
-        self, *, left: Sequence[tuple[str, ...]], right: Sequence[tuple[str, ...]]
+        self, *, left: Sequence[Activities], right: Sequence[Activities]
     ) -> Float64[np.ndarray, 'N M']:
         """The distance between every suffix of `left` and every suffix of `right`.
 
@@ -26,7 +28,7 @@ class Distance(Protocol):
         ...
 
 
-def _codes(suffixes: Sequence[tuple[str, ...]]) -> list[tuple[int, ...]]:
+def _codes(suffixes: Sequence[Activities]) -> list[tuple[int, ...]]:
     """Number the activities of some suffixes 0, 1, 2, ... in order of first appearance, since
     comparing integers is several times faster than comparing strings.
 
@@ -44,9 +46,9 @@ class Exact(Distance):
     """0 between equal suffixes and 1 between any two different ones."""
 
     def __call__(
-        self, *, left: Sequence[tuple[str, ...]], right: Sequence[tuple[str, ...]]
+        self, *, left: Sequence[Activities], right: Sequence[Activities]
     ) -> Float64[np.ndarray, 'N M']:
-        ids: dict[tuple[str, ...], int] = {}
+        ids: dict[Activities, int] = {}
         left_ids = [ids.setdefault(suffix, len(ids)) for suffix in left]
         right_ids = [ids.setdefault(suffix, len(ids)) for suffix in right]
         return np.not_equal.outer(left_ids, right_ids).astype(np.float64)
@@ -59,7 +61,7 @@ class Bigram(Distance):
     empty suffixes are at distance 0."""
 
     def __call__(
-        self, *, left: Sequence[tuple[str, ...]], right: Sequence[tuple[str, ...]]
+        self, *, left: Sequence[Activities], right: Sequence[Activities]
     ) -> Float64[np.ndarray, 'N M']:
         codes = _codes([*left, *right])
         # Mark the start and end of each suffix with a code no activity has
@@ -89,7 +91,7 @@ class NormalizedDamerauLevenshtein(Distance):
     for suffixes with nothing in common, and 0 between two empty suffixes."""
 
     def __call__(
-        self, *, left: Sequence[tuple[str, ...]], right: Sequence[tuple[str, ...]]
+        self, *, left: Sequence[Activities], right: Sequence[Activities]
     ) -> Float64[np.ndarray, 'N M']:
         codes = _codes([*left, *right])
         return process.cdist(

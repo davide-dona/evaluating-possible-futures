@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from possible_futures.datasets.cases import Case
+from possible_futures.cases import Case
 
 
 def read_log(
@@ -19,8 +19,7 @@ def read_log(
         separator: The separator used in the CSV file.
 
     Returns:
-        A list of `Case` objects, each representing a case with its activities and timestamps,
-        and every prefix that leaves a non-empty suffix.
+        A list of `Case` objects, each representing a case with its activities and timestamps.
     """
     events = pd.read_csv(
         path,
@@ -36,7 +35,6 @@ def read_log(
             case_id=case_id,
             activities=activities,
             timestamps=timestamps,
-            prefix_lengths=range(1, len(activities)),
         )
         for case_id, activities, timestamps in zip(
             cases.index, cases[activity_key], cases[timestamp_key], strict=True

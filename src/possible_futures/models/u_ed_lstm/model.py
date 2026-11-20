@@ -32,17 +32,15 @@ def _embedding_dim(vocabulary_size: int) -> int:
 
 
 class Loss(NamedTuple):
-    """The training objective of one batch and the two terms it sums.
+    """The training objective of one batch and its data term.
 
     Attributes:
-        total: The value to backpropagate, `data + penalty`.
+        total: The value to backpropagate, the data term plus the weight penalty.
         data: How poorly the model predicts the targets, the mean cross-entropy.
-        penalty: The weight penalty, which keeps the parameters small.
     """
 
     total: Float[torch.Tensor, '']
     data: float
-    penalty: float
 
 
 class UEDLSTM(nn.Module):
@@ -115,8 +113,8 @@ class UEDLSTM(nn.Module):
             GaussianLogits: The logits `[B, T, V]` of every target position.
         """
         rows = targets.size(dim=0)
-        encoded = self.encoder(prefixes, masks=self.encoder.sample_masks(rows))
-        masks = self.decoder.sample_masks(rows)
+        encoded = self.encoder(prefixes, masks=self.encoder.lstm.sample_masks(rows))
+        masks = self.decoder.lstm.sample_masks(rows)
         logits, states = self.decoder.start(
             tokens=prefixes.last_tokens(), encoded=encoded, masks=masks
         )
@@ -140,11 +138,11 @@ class UEDLSTM(nn.Module):
             weight_penalty: The weight of the sum of the squared parameters.
 
         Returns:
-            Loss: The total to backpropagate and the terms it sums.
+            Loss: The total to backpropagate and its data term.
         """
         data = logits.cross_entropy(targets, num_samples=self.logit_samples)
         penalty = weight_penalty * sum(parameter.square().sum() for parameter in self.parameters())
-        return Loss(total=data + penalty, data=data.item(), penalty=penalty.item())
+        return Loss(total=data + penalty, data=data.item())
 
     @torch.no_grad()
     def sample_suffixes(
@@ -167,14 +165,14 @@ class UEDLSTM(nn.Module):
         batch_size = prefixes.lengths.size(dim=0)
         rows, device = batch_size * num_draws, prefixes.lengths.device
         prefixes = prefixes.repeat_interleave(num_draws)
-        encoded = self.encoder(prefixes, masks=self.encoder.sample_masks(rows))
+        encoded = self.encoder(prefixes, masks=self.encoder.lstm.sample_masks(rows))
         inputs = prefixes.last_tokens()
         tokens = torch.full(size=(rows, max_steps), fill_value=SpecialToken.PAD, device=device)
         # The row of `tokens` of every suffix still decoding.
         live = torch.arange(end=rows, device=device)
         states: list[LSTMState] = []
         for position in range(max_steps):
-            masks = self.decoder.sample_masks(len(live))
+            masks = self.decoder.lstm.sample_masks(len(live))
             if position == 0:
                 logits, states = self.decoder.start(tokens=inputs, encoded=encoded, masks=masks)
             else:

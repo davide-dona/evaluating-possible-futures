@@ -5,6 +5,7 @@ from typing import Protocol
 
 import numpy as np
 
+from possible_futures.cases import Activities
 from possible_futures.distances import Distance, NormalizedDamerauLevenshtein
 
 
@@ -17,7 +18,7 @@ class Metric(Protocol):
 
     name: str
 
-    def __call__(self, *, draws: Sequence[tuple[str, ...]], observed: tuple[str, ...]) -> float:
+    def __call__(self, *, draws: Sequence[Activities], observed: Activities) -> float:
         """Score the draws of one prefix.
 
         Args:
@@ -48,7 +49,7 @@ class EnergyScore(Metric):
     name: str
     distance: Distance
 
-    def __call__(self, *, draws: Sequence[tuple[str, ...]], observed: tuple[str, ...]) -> float:
+    def __call__(self, *, draws: Sequence[Activities], observed: Activities) -> float:
         counts = Counter(draws)
         unique = list(counts)
         weights = np.fromiter(counts.values(), dtype=np.float64, count=len(counts))
@@ -75,6 +76,6 @@ class MeanDLSimilarity(Metric):
 
     name: str
 
-    def __call__(self, *, draws: Sequence[tuple[str, ...]], observed: tuple[str, ...]) -> float:
+    def __call__(self, *, draws: Sequence[Activities], observed: Activities) -> float:
         distances = NormalizedDamerauLevenshtein()(left=draws, right=[observed])  # [S, 1]
         return 1.0 - float(distances.mean())

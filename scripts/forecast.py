@@ -7,18 +7,20 @@ import torch
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
-from possible_futures.datasets.cases import Case, load_cases
-from possible_futures.forecasters.forecaster import Forecaster, write_forecasts
-from possible_futures.forecasters.markov import MarkovChain
-from possible_futures.forecasters.next_activity import GreedyForecaster, SamplingForecaster
+from possible_futures.cases import Case, load_cases, load_scored
+from possible_futures.forecasters.distribution import GreedyForecaster, SamplingForecaster
+from possible_futures.forecasters.forecaster import Forecaster
+from possible_futures.forecasters.forecasts import write_forecasts
 from possible_futures.forecasters.u_ed_lstm import UEDLSTMForecaster
 from possible_futures.forecasters.unconditional import UnconditionalForecaster
+from possible_futures.models.markov import MarkovChain
 from possible_futures.runs.configs import DataConfig
 from possible_futures.runs.console import banner, step
 from possible_futures.runs.paths import (
     Split,
     forecasts_file,
     model_dir,
+    scored_file,
     split_file,
 )
 from possible_futures.simulation.synthetic import SyntheticProcess
@@ -100,6 +102,7 @@ def main(config: ForecastConfig) -> None:
     with step('Building the forecaster and loading the test prefixes'):
         train = load_cases(split_file(name, Split.TRAIN))
         test = load_cases(split_file(name, Split.TEST))
+        scored = load_scored(scored_file(name))
         forecaster = build_forecaster(
             forecaster_config, data=config.data, train=train, rng=rng, device=device
         )
@@ -108,6 +111,7 @@ def main(config: ForecastConfig) -> None:
         num_prefixes = write_forecasts(
             forecaster,
             test=test,
+            scored=scored,
             path=path,
             num_draws=config.num_draws,
             max_steps=max(len(case) for case in train),

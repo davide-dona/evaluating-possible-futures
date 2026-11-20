@@ -3,6 +3,7 @@ from pathlib import Path
 
 # Relative to the repository root, which every stage runs from.
 DATA = Path('data')
+# Every stage writes into `OUTPUTS / dataset / <script name>`, its Hydra run directory.
 OUTPUTS = Path('outputs')
 
 
@@ -11,14 +12,6 @@ class Split(StrEnum):
 
     TRAIN = 'train'
     TEST = 'test'
-
-
-class Stage(StrEnum):
-    """The stages writing under `OUTPUTS`, named as their scripts."""
-
-    TRAIN = 'train'
-    FORECAST = 'forecast'
-    EVALUATE = 'evaluate'
 
 
 def original_log_file(dataset: str) -> Path:
@@ -46,6 +39,18 @@ def split_file(dataset: str, split: Split) -> Path:
     return DATA / dataset / 'processed' / f'{split}.parquet'
 
 
+def scored_file(dataset: str) -> Path:
+    """The Parquet file of the lengths of the scored test prefixes.
+
+    Args:
+        dataset: The name of the dataset.
+
+    Returns:
+        Path: The scored prefixes file.
+    """
+    return DATA / dataset / 'processed' / 'scored.parquet'
+
+
 def tokenizer_file(dataset: str) -> Path:
     """The tokenizer fitted on the train split.
 
@@ -58,19 +63,6 @@ def tokenizer_file(dataset: str) -> Path:
     return DATA / dataset / 'processed' / 'tokenizer.json'
 
 
-def stage_dir(dataset: str, stage: Stage) -> Path:
-    """The output directory of a stage, the same as its Hydra run directory.
-
-    Args:
-        dataset: The name of the dataset.
-        stage: The stage.
-
-    Returns:
-        Path: The directory the stage writes into.
-    """
-    return OUTPUTS / dataset / stage
-
-
 def model_dir(dataset: str) -> Path:
     """The directory of the trained model and its tokenizer.
 
@@ -80,7 +72,7 @@ def model_dir(dataset: str) -> Path:
     Returns:
         Path: The output directory of the train stage.
     """
-    return stage_dir(dataset, Stage.TRAIN)
+    return OUTPUTS / dataset / 'train'
 
 
 def forecasts_file(dataset: str, forecasts_name: str) -> Path:
@@ -93,7 +85,7 @@ def forecasts_file(dataset: str, forecasts_name: str) -> Path:
     Returns:
         Path: The forecasts file.
     """
-    return stage_dir(dataset, Stage.FORECAST) / f'{forecasts_name}.parquet'
+    return OUTPUTS / dataset / 'forecast' / f'{forecasts_name}.parquet'
 
 
 def scores_file(dataset: str, forecasts_name: str) -> Path:
@@ -106,4 +98,4 @@ def scores_file(dataset: str, forecasts_name: str) -> Path:
     Returns:
         Path: The scores file.
     """
-    return stage_dir(dataset, Stage.EVALUATE) / f'{forecasts_name}.json'
+    return OUTPUTS / dataset / 'evaluate' / f'{forecasts_name}.json'

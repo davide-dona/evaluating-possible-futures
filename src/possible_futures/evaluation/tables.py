@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from possible_futures.datasets.cases import num_activities, num_events, num_prefixes, num_variants
+from possible_futures.cases import num_activities, num_events, num_scored_prefixes, num_variants
 from possible_futures.preprocessing.splitting import OutOfTimeSplit
 
 DECIMALS = 3
@@ -100,7 +100,7 @@ def properties_table(splits: Mapping[str, OutOfTimeSplit]) -> str:
             _grouped_digits(num_variants(log)),
             _grouped_digits(num_activities(log)),
             f'{lengths.mean():.1f}+{lengths.std(ddof=1):.1f}',
-            _grouped_digits(num_prefixes(split.test)),
+            _grouped_digits(num_scored_prefixes(split.scored)),
         ]
         lines.append(' & '.join(cells) + r' \\')
     lines += [r'\bottomrule', r'\end{tabular}', '']
