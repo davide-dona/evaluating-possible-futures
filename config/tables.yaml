@@ -39,14 +39,14 @@ forecasts:
 # printed, each with its LaTeX header and whether a higher mean is better.
 metrics:
   DLS:
-    header: $\meanDLS$~$\uparrow$
+    header: $\avgDLSim$~$\uparrow$
     higher_is_better: true
   ES dl:
-    header: \DL~$\downarrow$
+    header: \ESDL~$\downarrow$
     higher_is_better: false
   ES exact:
-    header: \exact~$\downarrow$
+    header: \ESEM~$\downarrow$
     higher_is_better: false
   ES bigram:
-    header: \ngram[2]~$\downarrow$
+    header: \ESNgram[2]~$\downarrow$
     higher_is_better: false
