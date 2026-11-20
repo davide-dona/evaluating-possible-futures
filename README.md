@@ -1,24 +1,101 @@
-# Evaluating possible futures
+# Evaluating Possible Futures
 
-This project tests how suffix prediction is scored. A forecaster sees the start of a running case and imagines several ways it could continue. The project scores those continuations against what actually happened, using metrics that average a point score over the continuations and metrics that judge them as a distribution. It shows that the averaged point metrics reward forecasters that always predict the single most typical future.
+Experiments of the paper *Evaluating Possible Futures: Rethinking the Assessment of Probabilistic Suffix Prediction*.
 
-## From event logs to forecasts
+**Probabilistic suffix prediction** is a novel paradigm within Predictive Process Monitoring 
+(PPM). Rather than restricting the prediction to a single point estimate, it models a probability distribution over the possible future suffixes of an ongoing process instance, reflecting the uncertainty inherent in the process.
 
-An event log records many runs of a business process. Each run is a **case**, and each step of a case is an **event**: an **activity**, such as "Register request", that happened at a timestamp. The code represents a case as its activities in time order, a `tuple[str, ...]`.
+Current methods score sampled suffixes by their averaged Damerau-Levenshtein (DL) similarity to the ground-truth (GT) suffix. This can favour a degenerate predictor that collapses uncertainty over one that faithfully captures the process.
 
-Cutting a case after its first few events splits it in two. The **prefix** is the part already observed. The **suffix** is the rest of the case, the future the forecaster has to predict. One case of five events gives four prefixes, of lengths 1 to 4, each with a non-empty suffix.
+Our work adopts the energy score, a strictly proper scoring rule, instantiated with three distances:
 
-A **forecaster** reads a prefix and returns several suffixes that could follow it. Each one is a **draw**: one possible future. A sampling forecaster returns different draws, while a greedy forecaster takes the most likely activity at every step and so returns the same suffix every time. The draws of one prefix form a **forecast**, and the forecast stage writes one forecast per scored test prefix. Inside a forecaster, **sampling** is any random choice made while producing a draw, such as picking the next activity or a dropout mask.
+- **exact match** gives a strictly proper score, but one blind to partial similarity between suffixes;
+- **$n$-gram** gives a proper but not strictly proper score;
+- **DL**, the standard choice in suffix prediction, gives an improper one.
 
-A **process** gives the probability of every possible next activity after a prefix, or of `<END>` when the case is over. Applying it step by step produces a suffix. The synthetic dataset is simulated from a known process, which serves as an oracle forecaster. A Markov chain fitted on the train cases serves as a baseline.
+The experiments benchmark these metrics on a synthetic log and four real event logs.
 
-The neural forecaster, the U-ED-LSTM, works on integer **tokens** instead of activity strings. The tokenizer, fitted on the train cases, gives each train activity a token and reserves three special tokens ahead of them:
+## Setup
 
-- `<PAD>` fills the shorter sequences of a batch up to the length of the longest. The model never predicts it.
-- `<UNK>` stands for any activity the train cases do not hold. When scoring, every unknown activity of an observed suffix reads as `<UNK>`.
-- `<EOS>` ends a suffix. The model predicts it when it expects the case to be over.
+Requires [Git LFS](https://git-lfs.com/) and [uv](https://docs.astral.sh/uv/) (Python 3.13).
 
-The stages run in this order, each a script in `scripts/`: `simulate` (synthetic data only), `preprocess`, `train`, `forecast`, `collapse`, `evaluate`, `tables`.
+```bash
+git lfs install
+git clone https://github.com/davide-dona/evaluating-possible-futures.git
+cd evaluating-possible-futures
+uv sync
+```
+
+## Data sources
+
+The logs used come from 4TU.ResearchData and are stored as CSV in `data/<dataset>/original.csv`. 
+
+| Dataset | Event log | DOI |
+|---|---|---|
+| `sepsis` | Sepsis Cases | [10.4121/uuid:915d2bfb-7e84-49ad-a286-dc35f063a460](https://doi.org/10.4121/uuid:915d2bfb-7e84-49ad-a286-dc35f063a460) |
+| `bpic12` | BPI Challenge 2012 | [10.4121/uuid:3926db30-f712-4394-aebc-75976070e91f](https://doi.org/10.4121/uuid:3926db30-f712-4394-aebc-75976070e91f) |
+| `bpic17` | BPI Challenge 2017 | [10.4121/uuid:5f3067df-f10b-45da-b98b-86ae4c7a310b](https://doi.org/10.4121/uuid:5f3067df-f10b-45da-b98b-86ae4c7a310b) |
+| `bpic19` | BPI Challenge 2019 | [10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1](https://doi.org/10.4121/uuid:d06aff4b-79f0-45e6-8ec8-e19730c248f1) |
+
+## Reproducing the results
+
+To reproduce the results, run the following commands in order. We will show the commands for Sepsis; for another log, change `dataset=sepsis` to `bpic12`, `bpic17`, `bpic19` or `synthetic`. Every script is configured with [Hydra](https://hydra.cc) from `config/`, which holds the settings and hyperparameters described in the paper.
+
+### 1. Simulate the synthetic log
+
+Apart from the real event logs listed in [Data sources](#data-sources), we add a synthetic log generated from a simple process with a long-term dependency. Since we know its true distribution, we can compare the predictors against it. To generate it, run:
+
+```bash
+uv run python scripts/simulate.py
+```
+
+### 2. Preprocess the logs
+
+Before training, we clean each log and split its cases in time into a training and a test set. To preprocess a log, run:
+
+```bash
+uv run python scripts/preprocess.py dataset=sepsis
+```
+
+### 3. Train the U-ED-LSTM
+
+On the real logs the true distribution is unknown, so we approximate it with a U-ED-LSTM trained on each log. Training needs a GPU and takes from a few minutes on Sepsis to about 16 hours on BPIC17. To train it, run:
+
+```bash
+uv run python scripts/train.py dataset=sepsis
+```
+
+### 4. Sample suffixes
+
+Next, we let each predictor forecast the suffixes of every test prefix. On the real logs we compare the U-ED-LSTM (`sampled`) with a baseline that ignores the prefix (`unconditional`). On the synthetic log we also use the true process (`oracle_sampled`, `oracle_greedy`) and a first-order Markov chain (`markov_sampled`, `markov_greedy`). To run a predictor, pass its name to `forecaster`:
+
+```bash
+uv run python scripts/forecast.py dataset=sepsis forecaster=sampled
+```
+
+### 5. Collapse to the medoid
+
+To see what happens when uncertainty collapses, we reduce the suffixes of the U-ED-LSTM to a single one, their medoid. This gives the `medoid` predictor. To compute it, run:
+
+```bash
+uv run python scripts/collapse.py dataset=sepsis
+```
+
+### 6. Score the predictions
+
+We then score every predictor with the averaged DL similarity and the three energy scores. To score a predictor, pass its name to `forecasts`:
+
+```bash
+uv run python scripts/evaluate.py dataset=sepsis forecasts=sampled
+```
+
+### 7. Build the tables
+
+Finally, once every log is scored, we collect the results into the tables of the paper, written to `outputs/tables/`. To build them, run:
+
+```bash
+uv run python scripts/tables.py
+```
 
 ## Tensor dimensions
 
