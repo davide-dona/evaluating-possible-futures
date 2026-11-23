@@ -1,0 +1,28 @@
+defaults:
+- evaluate_schema
+- output/default
+- dataset: ???
+- _self_
+# The name of the forecasts scored, the stem of their file.
+forecasts: ???
+# Processes scoring the prefixes in parallel.
+workers: 8
+# The most draws held in memory at once.
+max_rows: 1000000
+# The metrics the forecasts are scored with, each named as its mean score in the scores file.
+metrics:
+- _target_: possible_futures.evaluation.metrics.MeanDLSimilarity
+  name: DLS
+- _target_: possible_futures.evaluation.metrics.EnergyScore
+  name: ES dl
+  distance: {_target_: possible_futures.distances.NormalizedDamerauLevenshtein}
+- _target_: possible_futures.evaluation.metrics.EnergyScore
+  name: ES exact
+  distance: {_target_: possible_futures.distances.Exact}
+- _target_: possible_futures.evaluation.metrics.EnergyScore
+  name: ES bigram
+  distance: {_target_: possible_futures.distances.Bigram}
+hydra:
+  # The scores of a dataset's forecasts share the stage directory, so each keeps its own Hydra
+  # record.
+  output_subdir: .hydra/${forecasts}

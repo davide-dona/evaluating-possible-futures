@@ -1,0 +1,8 @@
+# @package _global_
+# The settings every dataset shares, each overridable in the dataset's own file.
+data:
+  split:
+    test_fraction: 0.2
+    max_case_length_percentile: 98.5
+    # Also the length of the end window, which debiases the end of the log.
+    max_case_duration_percentile: 95

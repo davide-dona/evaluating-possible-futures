@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+- _defaults
+- _self_
+data:
+  name: sepsis
+  case_key: Case ID
+  activity_key: Activity
+  timestamp_key: time:timestamp
+  separator: ';'

@@ -1,0 +1,8 @@
+# @package _global_
+# The true process of the simulated dataset, sampled.
+forecaster:
+  name: oracle_sampled
+  model: ORACLE
+  strategy: SAMPLED
+device: cpu
+max_rows: 100000

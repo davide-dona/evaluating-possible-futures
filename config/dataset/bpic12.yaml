@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+- _defaults
+- _self_
+data:
+  name: bpic12
+  case_key: CaseID
+  activity_key: Activity
+  timestamp_key: CompleteTimestamp
+  separator: ','

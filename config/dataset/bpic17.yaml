@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+- _defaults
+- _self_
+data:
+  name: bpic17
+  case_key: case:concept:name
+  activity_key: concept:name
+  timestamp_key: time:timestamp
+  separator: ';'

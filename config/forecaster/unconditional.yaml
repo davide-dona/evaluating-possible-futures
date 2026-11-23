@@ -1,0 +1,8 @@
+# @package _global_
+# The suffixes of train, drawn whatever the prefix.
+forecaster:
+  name: unconditional
+  model: UNCONDITIONAL
+  strategy: SAMPLED
+device: cpu
+max_rows: 100000
